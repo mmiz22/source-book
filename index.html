@@ -413,6 +413,7 @@ a.hts{color:var(--accent);text-decoration:underline;white-space:nowrap}
         <button id="v-f" aria-pressed="true">Factories</button>
         <button id="v-q" aria-pressed="false">Quotes</button>
         <button id="v-s" aria-pressed="false">Samples</button>
+        <button id="v-c" aria-pressed="false">Catalogs</button>
         <button id="v-d" aria-pressed="false">Files</button>
         <button id="v-r" aria-pressed="false">Replies</button>
         <button id="v-t" aria-pressed="false">To do</button>
@@ -435,7 +436,7 @@ a.hts{color:var(--accent);text-decoration:underline;white-space:nowrap}
 <script>
 (() => {
 const DEFAULT_CATS = ["Barware","Sporting Goods","Tie-Down Straps","Water Filters","Housewares","Packaging"];
-const S = { sup:new Map(), quotes:[], samples:[], docs:[], dgroup:(()=>{ try{ return localStorage.getItem("sb-dgroup")||"cat"; }catch{ return "cat"; } })(), dtype:"All", src:"All", met:"All", view:(()=>{ try{ return localStorage.getItem("sb-view")==="f"?"f":"h"; }catch{ return "h"; } })(), cat:"All", proj:"All", q:"", sort:(()=>{ try{ return localStorage.getItem("fb-sort")||"month"; }catch{ return "month"; } })(), loaded:{s:false,q:false} };
+const S = { sup:new Map(), quotes:[], samples:[], docs:[], dcat:false, dgroup:(()=>{ try{ const v=localStorage.getItem("sb-dgroup"); return v==="other"?"other":"quote"; }catch{ return "quote"; } })(), dtype:"All", src:"All", met:"All", view:(()=>{ try{ return localStorage.getItem("sb-view")==="f"?"f":"h"; }catch{ return "h"; } })(), cat:"All", proj:"All", q:"", sort:(()=>{ try{ return localStorage.getItem("fb-sort")||"month"; }catch{ return "month"; } })(), loaded:{s:false,q:false} };
 const STATUSES=["Requested","Shipped","Received","Approved","Rejected"];
 let db=null, assets=null, sample=null, downloads=null, mcp=null, userNS=null, me=null, imgOK=false, canWrite=true;
 const $ = s => document.querySelector(s);
@@ -606,8 +607,8 @@ const normFile=x=>String(x||"").toLowerCase().replace(/\(\d+\)/g,"").replace(/\.
 const QUOTE_DOCS=["Quotation","Price list","RFQ response","Proforma invoice"];
 const DG_QUOTE=["Quotation","Price list","RFQ response","Proforma invoice","PI","Invoice"];
 const dgOf=d=>{ const t=docTypeOf(d); if(d.kind==="catalog"||t==="Catalog"||t==="Company Profile") return "cat"; if(DG_QUOTE.includes(t)) return "quote"; return "other"; };
-const DGS=[["cat","Catalogs"],["quote","Quotes & price lists"],["other","Other files"]];
-const inDG=d=>dgOf(d)===S.dgroup;
+const DGS=[["quote","Quotes & price lists"],["other","Other files"]];
+const inDG=d=>S.dcat?dgOf(d)==="cat":dgOf(d)===S.dgroup;
 function originalsFor(q){
   const out=[]; if(q.file) out.push({file:q.file,name:q.fileName||"Quote sheet",sure:true});
   const ds=S.docs.filter(d=>d.supplierId===q.supplierId);
@@ -798,13 +799,15 @@ function render(){
   const openFam=S.cat==="All"?null:famOf(S.cat);
   const cats=["All"]; fams.forEach(f=>{ cats.push(f); if(f===openFam) keys.filter(k=>k!==f&&famOf(k)===f).sort((x,y)=>(/ – Other$/.test(x)-/ – Other$/.test(y))||x.localeCompare(y)).forEach(k=>cats.push(k)); });
   const allN = S.view==="d" ? S.docs.filter(inDG).length : sups.length;
-  $("#v-d").setAttribute("aria-pressed",S.view==="d"); $("#v-d").textContent=S.docs.length?`Files · ${S.docs.length}`:"Files";
+  { const nc=S.docs.filter(d=>dgOf(d)==="cat").length, nf=S.docs.length-nc;
+  $("#v-d").setAttribute("aria-pressed",S.view==="d"&&!S.dcat); $("#v-d").textContent=nf?`Files · ${nf}`:"Files";
+  $("#v-c").setAttribute("aria-pressed",S.view==="d"&&S.dcat); $("#v-c").textContent=nc?`Catalogs · ${nc}`:"Catalogs"; }
   const usedProj=[...new Set(sups.flatMap(s=>arr(s.projects)))].sort();
   if(S.proj!=="All" && !usedProj.includes(S.proj)) S.proj="All";
   document.body.classList.toggle("tbl", (S.view==="f" && S.layout==="table") || S.view==="q" || S.view==="h");
   const qctl = S.view==="q" ? (customers().length?`<select id="custsel" class="chip" aria-label="Customer">${customers().map(c=>`<option ${c.name===activeCust()?.name?"selected":""}>${esc(c.name)}</option>`).join("")}</select>`:"")+`<select id="qtypesel" class="chip" aria-label="Product type"><option value="All">All product types</option>${[...(S.qtypeCounts||new Map())].sort((a,b)=>a[0].localeCompare(b[0])).map(([t,n])=>`<option value="${esc(t)}" ${t===S.qtype?"selected":""}>${esc(t)} (${n})</option>`).join("")}${S.qtype!=="All"&&!(S.qtypeCounts||new Map()).has(S.qtype)?`<option selected>${esc(S.qtype)}</option>`:""}</select><select id="qfitsel" class="chip" aria-label="Fit"><option value="All">Any fit</option>${[["ok","Fits"],["tight","Tight"],["over","Over"],["none","No target retail"]].map(([v,t])=>`<option value="${v}" ${v===S.qfit?"selected":""}>${t}</option>`).join("")}</select><select id="qsortsel" class="chip" aria-label="Order of product types"><option value="count" ${S.qsort==="count"?"selected":""}>Most quotes first</option><option value="az" ${S.qsort==="az"?"selected":""}>A–Z</option></select><label class="chip" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="qaddons" ${S.addons?"checked":""}> Add-ons</label>` : "";
   const ltog = S.view==="f" ? `<span class="vtog" role="group" aria-label="Layout"><button data-layout="cards" aria-pressed="${S.layout!=="table"}">Cards</button><button data-layout="table" aria-pressed="${S.layout==="table"}">Table</button></span>` : "";
-  $("#cats").innerHTML = ltog + qctl + (S.view==="f"&&S.layout!=="table"?`<select id="sortsel" class="chip" aria-label="Sort factories"><option value="month" ${S.sort==="month"?"selected":""}>By month added</option><option value="az" ${S.sort==="az"?"selected":""}>A–Z</option></select>`:"") + (S.view==="d"?DGS.map(([k,t])=>`<button class="chip" data-dg="${k}" aria-pressed="${S.dgroup===k}">${t}<span class="n">${S.docs.filter(d=>dgOf(d)===k).length}</span></button>`).join(""):"") + (S.view==="d"?`<select id="dtypesel" class="chip" aria-label="File type"><option value="All">All types</option>${DOCTYPES.filter(t=>S.docs.some(d=>inDG(d)&&docTypeOf(d)===t)).map(t=>`<option ${t===S.dtype?"selected":""}>${esc(t)}</option>`).join("")}</select>`:"") + (S.view!=="d"?`<select id="srcsel" class="chip" aria-label="Source"><option value="All">All sources</option>${["WeChat","Alibaba","Global Sources","Email","Card scan","Added by hand"].filter(x=>sups.some(s=>srcOf(s).includes(x))).map(x=>`<option ${x===S.src?"selected":""}>${esc(x)}</option>`).join("")}</select>`:"") + (usedProj.length&&S.view!=="d"?`<select id="projsel" class="chip" aria-label="Project"><option value="All">All projects</option>${usedProj.map(p=>`<option ${p===S.proj?"selected":""}>${esc(p)}</option>`).join("")}</select>`:"") + (()=>{ const ev=[...new Set(sups.map(x=>x.metAt).filter(Boolean))].sort(); if(S.met!=="All"&&!ev.includes(S.met)) S.met="All"; return ev.length&&S.view!=="d"?`<select id="metsel" class="chip" aria-label="Where you met"><option value="All">All events</option>${ev.map(x=>`<option ${x===S.met?"selected":""}>${esc(x)}</option>`).join("")}</select>`:""; })() + cats.map(c=>{ const sub=c!==famOf(c); const hasSub=!sub&&keys.some(k=>k!==c&&famOf(k)===c); return `<button class="chip${sub?" sub":""}" data-cat="${esc(c)}" aria-pressed="${c===S.cat}">${esc(sub?c.split(" – ").slice(1).join(" – "):c)}${hasSub&&c!==openFam?" ▾":""}<span class="n">${c==="All"?allN:counts[c]}</span></button>`; }).join("");
+  $("#cats").innerHTML = ltog + qctl + (S.view==="f"&&S.layout!=="table"?`<select id="sortsel" class="chip" aria-label="Sort factories"><option value="month" ${S.sort==="month"?"selected":""}>By month added</option><option value="az" ${S.sort==="az"?"selected":""}>A–Z</option></select>`:"") + (S.view==="d"&&!S.dcat?DGS.map(([k,t])=>`<button class="chip" data-dg="${k}" aria-pressed="${S.dgroup===k}">${t}<span class="n">${S.docs.filter(d=>dgOf(d)===k).length}</span></button>`).join(""):"") + (S.view==="d"?`<select id="dtypesel" class="chip" aria-label="File type"><option value="All">All types</option>${DOCTYPES.filter(t=>S.docs.some(d=>inDG(d)&&docTypeOf(d)===t)).map(t=>`<option ${t===S.dtype?"selected":""}>${esc(t)}</option>`).join("")}</select>`:"") + (S.view!=="d"?`<select id="srcsel" class="chip" aria-label="Source"><option value="All">All sources</option>${["WeChat","Alibaba","Global Sources","Email","Card scan","Added by hand"].filter(x=>sups.some(s=>srcOf(s).includes(x))).map(x=>`<option ${x===S.src?"selected":""}>${esc(x)}</option>`).join("")}</select>`:"") + (usedProj.length&&S.view!=="d"?`<select id="projsel" class="chip" aria-label="Project"><option value="All">All projects</option>${usedProj.map(p=>`<option ${p===S.proj?"selected":""}>${esc(p)}</option>`).join("")}</select>`:"") + (()=>{ const ev=[...new Set(sups.map(x=>x.metAt).filter(Boolean))].sort(); if(S.met!=="All"&&!ev.includes(S.met)) S.met="All"; return ev.length&&S.view!=="d"?`<select id="metsel" class="chip" aria-label="Where you met"><option value="All">All events</option>${ev.map(x=>`<option ${x===S.met?"selected":""}>${esc(x)}</option>`).join("")}</select>`:""; })() + cats.map(c=>{ const sub=c!==famOf(c); const hasSub=!sub&&keys.some(k=>k!==c&&famOf(k)===c); return `<button class="chip${sub?" sub":""}" data-cat="${esc(c)}" aria-pressed="${c===S.cat}">${esc(sub?c.split(" – ").slice(1).join(" – "):c)}${hasSub&&c!==openFam?" ▾":""}<span class="n">${c==="All"?allN:counts[c]}</span></button>`; }).join("");
   $("#v-f").setAttribute("aria-pressed",S.view==="f"); $("#v-q").setAttribute("aria-pressed",S.view==="q");
   const L=$("#list");
   if (!db){ return; }
@@ -846,7 +849,7 @@ function render(){
   } else if (S.view==="d"){
     const term=S.q.toLowerCase();
     const list=S.docs.filter(d=>inDG(d) && (S.cat==="All"||inCat(d.category||"Other",S.cat)) && (S.dtype==="All"||docTypeOf(d)===S.dtype) && (!term || term.split(/\s+/).every(w=>[d.name,docTypeOf(d),d.category,S.sup.get(d.supplierId)?.company,S.sup.get(d.supplierId)?.companyChinese].join(" ").toLowerCase().includes(w))));
-    if(!list.length){ L.innerHTML=`<div class="empty"><strong>No files ${S.docs.length?"match":"yet"}</strong><span>Open a factory and use “Add catalog” or “Add file”.</span></div>`; return; }
+    if(!list.length){ L.innerHTML=`<div class="empty"><strong>No ${S.dcat?"catalogs":"files"} ${S.docs.length?"match":"yet"}</strong><span>Open a factory and use “Add catalog” or “Add file”.</span></div>`; return; }
     const groups=new Map(); list.forEach(d=>{ const k=d.category||"Other"; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(d); });
     L.innerHTML=[...groups].sort((a,b)=>a[0].localeCompare(b[0])).map(([k,g])=>`<div class="qhead">${esc(k)} · ${g.length}</div><div class="dlist">`+
       g.sort((a,b)=>DOCTYPES.indexOf(docTypeOf(a))-DOCTYPES.indexOf(docTypeOf(b))||String(a.name).localeCompare(String(b.name))).map(d=>docRow(d,true)).join("")+`</div>`).join("");
@@ -2207,7 +2210,8 @@ $("#v-t").onclick=()=>{ S.view="t"; render(); };
 $("#v-r").onclick=()=>{ S.view="r"; render(); };
 $("#v-h").onclick=()=>{ S.view="h"; try{ localStorage.setItem("sb-view","h"); }catch{} render(); };
 $("#v-f").addEventListener("click",()=>{ try{ localStorage.setItem("sb-view","f"); }catch{} });
-$("#v-d").onclick=()=>{ S.view="d"; S.cat="All"; render(); };
+$("#v-d").onclick=()=>{ S.view="d"; S.dcat=false; S.cat="All"; S.dtype="All"; render(); };
+$("#v-c").onclick=()=>{ S.view="d"; S.dcat=true; S.cat="All"; S.dtype="All"; render(); };
 $("#cats").addEventListener("change",e=>{ if(e.target.id==="dtypesel"){ S.dtype=e.target.value; render(); }});
 $("#cats").addEventListener("change",e=>{ if(e.target.id==="srcsel"){ S.src=e.target.value; render(); } if(e.target.id==="projsel"){ S.proj=e.target.value; render(); } if(e.target.id==="metsel"){ S.met=e.target.value; render(); } if(e.target.id==="sortsel"){ S.sort=e.target.value; try{ localStorage.setItem("fb-sort",S.sort); }catch{} render(); }});
 $("#cats").addEventListener("click",e=>{ const b=e.target.closest("[data-cat]"); if(b){ S.cat=b.dataset.cat; render(); }});
