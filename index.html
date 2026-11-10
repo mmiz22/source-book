@@ -2242,19 +2242,21 @@ $("#cats").addEventListener("change",e=>{ const id=e.target.id;
   else if(id==="custsel"){ S.cust=e.target.value; try{ localStorage.setItem("sb-cust",S.cust); }catch{} render(); } });
 $("#add").onclick=()=>{ if(sample&&imgOK&&assets) openQuickScan(); else if(assets&&db) openDropBox(); else openFactoryForm(); };
 /* ---- Drop box: upload a card / quote sheet / catalog; a scheduled Claude task reads it and files it ---- */
-const DB_TYPES=[["card","Business card"],["quote","Quote sheet / price list"],["catalog","Catalog"],["other","Something else"]];
+const DB_TYPES=[["card","Business card"],["quote","Quote sheet / price list"],["catalog","Catalog"],["find","Product I saw in a store (find similar)"],["other","Something else"]];
 function dropBadge(){ if(sample) return; const b=$("#add"); if(!b) return; const n=arr(S.inbox).filter(x=>x.status==="waiting").length; b.textContent=n?`Scan card · ${n} waiting`:"Scan card"; }
 function dropList(){
   const items=arr(S.inbox).slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0,30);
   if(!items.length) return `<div class="note">Nothing here yet. Add a business card photo or a quote sheet above.</div>`;
   const lab={waiting:"Waiting to be read",done:"Filed",problem:"Needs you"};
+  const labOf=x=>x.type==="find"&&x.status==="done"?"Matches found":x.type==="find"&&x.status==="waiting"?"Waiting for Claude to look":(lab[x.status]||x.status||"");
   return items.map(x=>{ const t=(DB_TYPES.find(d=>d[0]===x.type)||[,"File"])[1]; const fs=arr(x.files);
     const who=x.resultSupplierId&&S.sup.get(x.resultSupplierId)?`<button class="btn sm ghost" data-dbopen="${esc(x.resultSupplierId)}">Open ${esc(S.sup.get(x.resultSupplierId).company||"factory")}</button>`:"";
     return `<div class="card" style="padding:12px;display:grid;gap:6px">
-      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><span class="tag">${esc(t)}</span><strong>${esc(lab[x.status]||x.status||"")}</strong><span class="muted" style="margin-left:auto">${x.createdAt?new Date(x.createdAt).toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):""}</span></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><span class="tag">${esc(t)}</span><strong>${esc(labOf(x))}</strong><span class="muted" style="margin-left:auto">${x.createdAt?new Date(x.createdAt).toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):""}</span></div>
       <div>${fs.map(f=>`<a href="${blobUrl(f.id)}" data-name="${esc(f.name||"File")}">${esc(f.name||"File")}</a>`).join(" · ")}</div>
       ${x.supplierName?`<div class="muted">For: ${esc(x.supplierName)}</div>`:""}${x.note?`<div class="muted">Note: ${esc(x.note)}</div>`:""}
       ${x.result?`<div>${esc(x.result)}</div>`:""}
+      ${arr(x.matches).length?`<div class="stack" style="gap:6px">${arr(x.matches).slice(0,8).map(m=>{ const sp=S.sup.get(m.supplierId); return `<div class="row" style="gap:10px;align-items:center;border-top:1px solid var(--line);padding-top:6px">${m.img?`<a href="${esc(m.img)}" data-name="Product photo"><img src="${esc(m.img)}" alt="" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#fff" loading="lazy"></a>`:""}<div style="flex:1;min-width:0"><div style="font-weight:600">${esc(m.price?("$"+m.price):"")}${m.moq?` · MOQ ${esc(m.moq)}`:""}${m.terms?` · ${esc(m.terms)}`:""}</div><div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.item||"")}</div>${m.why?`<div class="muted">${esc(m.why)}</div>`:""}</div>${sp?`<button class="btn sm ghost" data-dbopen="${esc(m.supplierId)}">${esc((sp.company||"Factory").slice(0,22))}</button>`:""}</div>`; }).join("")}</div>`:""}
       <div class="row" style="gap:8px;flex-wrap:wrap">${who}${x.status==="waiting"?`<button class="btn sm ghost" data-dbdel="${esc(x.id)}">Remove</button>`:""}</div></div>`; }).join("");
 }
 function openDropBox(){
@@ -2268,6 +2270,7 @@ function openDropBox(){
     </div>
     <div id="db-picked" class="muted"></div>
     <div class="field"><label class="label" for="db-sup">Factory, if you know it (optional)</label><input id="db-sup" list="db-suplist" placeholder="Start typing a factory name" autocomplete="off"><datalist id="db-suplist">${names.map(n=>`<option value="${esc(n)}">`).join("")}</datalist></div>
+    <div class="field" id="db-retailf" hidden><label class="label" for="db-retail">Retail price you saw in the store (optional)</label><input id="db-retail" inputmode="decimal" placeholder="e.g. 9.99"></div>
     <div class="field"><label class="label" for="db-note">Note for Claude (optional)</label><input id="db-note" placeholder="e.g. met at HK fair, FOB Shenzhen, for the Ross project"></div>
     <button class="btn primary" id="db-send" disabled>Send to Claude</button>
     <h3 style="margin:8px 0 0">Recent</h3>
@@ -2276,11 +2279,13 @@ function openDropBox(){
     const show=()=>{ $("#db-picked").textContent=files.length?files.map(f=>f.name).join(", "):""; $("#db-send").disabled=!files.length; };
     const pick=e=>{ files=files.concat([...e.target.files]); e.target.value=""; show(); };
     $("#db-cam").onchange=pick; $("#db-files").onchange=pick;
+    const tsel=$("#db-type"); const tch=()=>{ const f=tsel.value==="find"; $("#db-retailf").hidden=!f; $("#db-sup").closest(".field").hidden=f; $("#db-note").placeholder=f?"e.g. seen at Ross, 20W, comes with cable":"e.g. met at HK fair, FOB Shenzhen, for the Ross project"; };
+    tsel.onchange=tch; if(window.__dbPreset){ tsel.value=window.__dbPreset; window.__dbPreset=null; } tch();
     $("#db-send").onclick=async()=>{ const btn=$("#db-send"); btn.disabled=true; btn.textContent="Uploading…";
       try{ const out=[]; for(const f of files){ let b=f; if((f.type||"").startsWith("image/")){ try{ b=await shrink(f,2000); }catch(e){ b=f; } } const up=await assets.upload(b); out.push({id:up.id,name:f.name||"photo.jpg",size:b.size||f.size||0,mime:f.type||""}); }
         const nm=$("#db-sup").value.trim(); const hit=[...S.sup.values()].find(v=>(v.company||"").toLowerCase()===nm.toLowerCase());
-        await db.collection("inbox").doc().set({type:$("#db-type").value,files:out,supplierId:hit?hit.id:"",supplierName:nm,note:$("#db-note").value.trim(),status:"waiting",result:"",createdAt:Date.now(),updatedAt:Date.now()});
-        files=[]; show(); $("#db-note").value=""; $("#db-sup").value=""; toast("Added. Claude will read it within about an hour.");
+        await db.collection("inbox").doc().set({type:$("#db-type").value,files:out,supplierId:hit?hit.id:"",supplierName:nm,note:$("#db-note").value.trim(),retail:($("#db-retail").value||"").trim(),status:"waiting",result:"",createdAt:Date.now(),updatedAt:Date.now()});
+        files=[]; show(); $("#db-note").value=""; $("#db-sup").value=""; $("#db-retail").value=""; toast("Added. Claude will read it within about an hour.");
       }catch(e){ toast("Couldn't upload. Check your connection and try again."); }
       btn.textContent="Send to Claude"; show(); };
     body.addEventListener("click",async e=>{ const o=e.target.closest("[data-dbopen]"); if(o){ openFactory(o.dataset.dbopen); return; }
@@ -2862,6 +2867,7 @@ render();
     if(sample){ const w=document.createElement("button"); w.className="btn sm ghost"; w.textContent="✎ Writing helper"; w.onclick=()=>openMessage(null); $(".brand").append(w); }
     const g=document.createElement("button"); g.className="btn sm ghost"; g.textContent="Settings"; g.onclick=openSettings; $(".brand").append(g);
     if(sample){ const fs=document.createElement("button"); fs.className="btn sm"; fs.id="findsim"; fs.textContent="📷 Find similar"; fs.onclick=openFindSimilar; $(".brand").append(fs); }
+    else if(assets&&db){ const fs=document.createElement("button"); fs.className="btn sm"; fs.id="findsim"; fs.textContent="📷 Find similar"; fs.onclick=()=>{ window.__dbPreset="find"; openDropBox(); }; $(".brand").append(fs); }
     const hb=document.createElement("button"); hb.className="btn sm ghost"; hb.textContent="＋ Add by hand"; hb.onclick=()=>openFactoryForm(); $(".brand").append(hb);
     scanResume();
   }
