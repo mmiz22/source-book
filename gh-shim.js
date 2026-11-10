@@ -7,7 +7,7 @@ const OWNER = "mmiz22", REPO = "source-book-data", BRANCH = "main";
 const API = window.SB_API_BASE || "https://api.github.com";
 const TOKEN_KEY = "sb-gh-token";
 const SHARDED = { quotes: 32, suppliers: 8, docs: 4 };            // collections split across several files
-const ONEFILE = ["samples", "settings", "ptypes", "rfqs", "inbox"];
+const ONEFILE = ["samples", "settings", "ptypes", "rfqs", "inbox", "storefinds"];
 
 let token = null;
 try { token = localStorage.getItem(TOKEN_KEY); } catch {}

@@ -270,6 +270,12 @@ a.plink{display:block;line-height:0}
 .simshot{display:flex;justify-content:center;padding:14px;font-size:1rem}
 .simthumb{max-width:180px;max-height:180px;border-radius:10px;object-fit:cover;display:block}
 .simid{background:var(--sunk);border-radius:10px;padding:10px 12px}
+.findrow{border:1px solid var(--line,#e3e3e3);border-radius:10px;padding:8px 10px}
+.findrow summary{display:flex;gap:10px;align-items:center;cursor:pointer;list-style:none}
+.findrow summary::-webkit-details-marker{display:none}
+.findrow .pimg,.findrow .ph{width:56px;height:56px;flex:none;border-radius:8px;object-fit:cover}
+.findwho{min-width:0;flex:1}
+.findmatch{padding:8px 0;border-top:1px solid var(--line,#e3e3e3);cursor:pointer}
 .simrow .meta2 b{color:var(--accent)}
 /* ---------- original quote & photos ---------- */
 .orig{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -436,7 +442,7 @@ a.hts{color:var(--accent);text-decoration:underline;white-space:nowrap}
 <script>
 (() => {
 const DEFAULT_CATS = ["Barware","Sporting Goods","Tie-Down Straps","Water Filters","Housewares","Packaging"];
-const S = { sup:new Map(), quotes:[], samples:[], docs:[], dcat:false, dgroup:(()=>{ try{ const v=localStorage.getItem("sb-dgroup"); return v==="other"?"other":"quote"; }catch{ return "quote"; } })(), dtype:"All", src:"All", met:"All", view:(()=>{ try{ return localStorage.getItem("sb-view")==="f"?"f":"h"; }catch{ return "h"; } })(), cat:"All", proj:"All", q:"", sort:(()=>{ try{ return localStorage.getItem("fb-sort")||"month"; }catch{ return "month"; } })(), loaded:{s:false,q:false} };
+const S = { sup:new Map(), quotes:[], samples:[], finds:[], docs:[], dcat:false, dgroup:(()=>{ try{ const v=localStorage.getItem("sb-dgroup"); return v==="other"?"other":"quote"; }catch{ return "quote"; } })(), dtype:"All", src:"All", met:"All", view:(()=>{ try{ return localStorage.getItem("sb-view")==="f"?"f":"h"; }catch{ return "h"; } })(), cat:"All", proj:"All", q:"", sort:(()=>{ try{ return localStorage.getItem("fb-sort")||"month"; }catch{ return "month"; } })(), loaded:{s:false,q:false} };
 const STATUSES=["Requested","Shipped","Received","Approved","Rejected"];
 let db=null, assets=null, sample=null, downloads=null, mcp=null, userNS=null, me=null, imgOK=false, canWrite=true;
 const $ = s => document.querySelector(s);
@@ -919,6 +925,36 @@ function similarRowHtml(x,price){
     <div class="meta2">${x.score?`<b>${Math.round(x.score)}% match</b>${x.why?` · ${esc(x.why)}`:""} · `:""}${esc([`${money(l.price,q.currency)} ${q.incoterm||""}`.trim(), l.moq?`MOQ ${l.moq}`:"", q.date].filter(Boolean).join(" · "))}${o?` <a class="linkbtn" href="${blobUrl(o.file)}" data-name="${esc(o.name)}">Original</a>`:""}</div>
   </div>`;
 }
+function findHistHtml(){
+  const list=arr(S.finds).slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  if(!list.length) return `<div class="note">Products you look up are kept here, with the photo, the store price and the factories that matched.</div>`;
+  return `<div class="label">Store history (${list.length})</div>`+list.map(x=>{
+    const m=arr(x.matches), top=m[0];
+    const d=x.createdAt?new Date(x.createdAt).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}):"";
+    return `<details class="findrow"><summary>
+      ${x.photo?`<img class="pimg" src="${esc(blobUrl(x.photo))}" alt="" loading="lazy">`:`<div class="ph"></div>`}
+      <div class="findwho"><b>${esc(x.name||x.type||"Product")}</b>${x.brand?` · ${esc(x.brand)}`:""}
+        <div class="note">${esc([x.price?usd(+x.price)+(x.regularPrice&&+x.regularPrice>+x.price?` (regular ${usd(+x.regularPrice)})`:""):"No price read", x.store, d].filter(Boolean).join(" · "))}</div>
+        <div class="note">${top?`${m.length} similar · best: ${esc(top.company||"factory")} ${top.price!==""&&top.price!=null?esc(money(top.price,top.currency||"USD")):""}`:"Nothing similar in your quotes yet"}</div></div></summary>
+      ${x.packageText?`<div class="note">${esc(x.packageText)}</div>`:""}${arr(x.features).length?`<div class="note">${esc(arr(x.features).join(" · "))}</div>`:""}${x.note?`<div class="note">Your note: ${esc(x.note)}</div>`:""}
+      ${m.map(y=>`<div class="findmatch" data-findopen="${esc(y.supplierId||"")}" tabindex="0" role="button"><b>${esc(y.company||"Factory")}</b> ${y.score?`<span class="note">${Math.round(y.score)}% match</span>`:""}<div class="note">${esc(String(y.item||"").slice(0,140))}</div><div class="note">${esc([y.price!==""&&y.price!=null?money(y.price,y.currency||"USD"):"", y.incoterm, y.moq?`MOQ ${y.moq}`:"", y.date].filter(Boolean).join(" · "))}</div></div>`).join("")}
+      <div class="row"><button class="btn sm ghost" data-finddel="${esc(x.id)}">Remove from history</button></div>
+    </details>`; }).join("");
+}
+async function saveFind(findId, id, img, price, rp, good, text, store){
+  if(!db) return findId;
+  try{
+    const ref=findId?db.doc("storefinds/"+findId):db.collection("storefinds").doc();
+    const prev=findId?arr(S.finds).find(x=>x.id===findId):null;
+    let photo=prev?.photo||"";
+    if(!photo&&img&&assets){ try{ photo=(await assets.upload(await shrink(img,1200))).id; }catch(e){ photo=""; } }
+    const doc={ createdAt:prev?.createdAt||Date.now(), updatedAt:Date.now(), name:id.name||"", type:id.type||"", brand:id.brand||"", model:id.model||"",
+      price:price||"", regularPrice:rp||"", priceNote:id.price_note||"", packageText:String(id.package_text||"").slice(0,300), features:arr(id.features).slice(0,12).map(String),
+      store:store||"", note:text||"", photo,
+      matches:arr(good).slice(0,12).map(x=>({supplierId:x.r.s.id, company:x.r.s.company||x.r.s.companyChinese||"", item:String(x.r.l.item||"").slice(0,200), price:x.r.l.price??"", currency:x.r.q.currency||"USD", incoterm:x.r.q.incoterm||"", moq:x.r.l.moq||"", date:x.r.q.date||"", score:x.score||0})) };
+    await ref.set(doc); return ref.id;
+  }catch(e){ return findId; }
+}
 function openFindSimilar(){
   const canPhoto=!!(sample&&imgOK);
   openSheet("Find a similar product",`
@@ -927,9 +963,15 @@ function openFindSimilar(){
     <div id="simprev"></div>
     <div class="field"><label for="simtxt">${canPhoto?"Anything to add? (optional)":"What is it?"}</label><input id="simtxt" placeholder="e.g. 3-in-1 magnetic wireless charging stand"></div>
     <div class="field"><label for="simprice">Store price $ (optional)</label><input id="simprice" inputmode="decimal" placeholder="Read from the tag if left blank"></div>
+    <div class="field"><label for="simstore">Store (optional)</label><input id="simstore" placeholder="e.g. Five Below, Walmart" value="${esc((()=>{ try{ return localStorage.getItem("sb-laststore")||""; }catch{ return ""; } })())}"></div>
     <div class="row"><button class="btn ${canPhoto?"":"primary"}" id="simgo" ${sample?"":"disabled"}>${canPhoto?"Search again":"Find similar"}</button><span class="status" id="simst"></span></div>
-    <div id="simres" class="stack"></div>`, body=>{
-    let img=null;
+    <div id="simres" class="stack"></div>
+    <div id="simhist" class="stack">${findHistHtml()}</div>`, body=>{
+    let img=null, findId=null;
+    const store=()=>{ const v=($("#simstore")?.value||"").trim(); try{ localStorage.setItem("sb-laststore",v); }catch{} return v; };
+    $("#simhist").addEventListener("click",async e=>{
+      const del=e.target.closest("[data-finddel]"); if(del){ e.preventDefault(); if(del.dataset.sure!=="1"){ del.dataset.sure="1"; del.textContent="Tap again to remove"; return; } try{ await db.doc("storefinds/"+del.dataset.finddel).delete(); toast("Removed"); }catch(err){ toast("Couldn't remove"); } return; }
+      const op=e.target.closest("[data-findopen]"); if(op&&op.dataset.findopen&&S.sup.has(op.dataset.findopen)){ const sid=op.dataset.findopen; closeSheet(); openFactory(sid); } });
     const st=$("#simst"), res=$("#simres");
     const run=async()=>{
       const text=$("#simtxt").value.trim(); if(!img&&!text){ st.textContent=canPhoto?"Take a photo or describe the product.":"Describe the product first."; st.className="status err"; return; }
@@ -944,7 +986,7 @@ function openFindSimilar(){
         const rp=num(String(id.regular_price||"").replace(/[^0-9.]/g,""));
         const head=`<div class="simid"><b>${esc(id.name||id.type)}</b>${id.brand?` · ${esc(id.brand)}`:""}${id.model?` · ${esc(id.model)}`:""}${tag?`<div><b>${usd(tag)}</b>${rp&&rp>tag?` <span class="note">regular ${usd(rp)}</span>`:""}${id.price_note?` <span class="note">${esc(id.price_note)}</span>`:""}${id.pack_count?` <span class="note">· ${esc(id.pack_count)} pack</span>`:""}${id.retailer?` <span class="note">· ${esc(id.retailer)}</span>`:""}</div>`:""}${id.package_text?`<div class="note">“${esc(String(id.package_text).slice(0,260))}”</div>`:""}${id.item_number?`<div class="note">Item / UPC: ${esc(id.item_number)}</div>`:""}${ALL_TYPES.includes(id.type)&&id.type!=="Other"?` · ${esc(id.type)}`:""}${arr(id.features).length?`<div class="note">${esc(arr(id.features).slice(0,6).join(" · "))}</div>`:""}<div class="note">Not what it is? Type what it is above and tap Search again.</div>${price?`<div class="note">Fit is checked against ${tag&&!typed?"the tag price":"the store price"} of ${usd(price)} (${setPct("customerPct",55)}% customer cost, ${setPct("marginPct",45)}% margin).</div>`:""}</div>`;
         const pool=similarPool(id).slice(0,40);
-        if(!pool.length){ res.innerHTML=head+`<div class="empty"><strong>Nothing similar in your quotes</strong><span>None of your quoted items look like a ${esc(id.name||id.type)}. This could be a new product to ask factories about.</span></div>`; st.textContent=""; return; }
+        if(!pool.length){ res.innerHTML=head+`<div class="empty"><strong>Nothing similar in your quotes</strong><span>None of your quoted items look like a ${esc(id.name||id.type)}. This could be a new product to ask factories about.</span></div>`; st.textContent=""; findId=await saveFind(findId,id,img,price,rp,[],text,store()); return; }
         st.textContent=`Comparing with ${pool.length} quoted items…`;
         let ranked=null; try{ ranked=await rankSimilar(id,pool,img); }catch(e){ try{ if(img) ranked=await rankSimilar(id,pool,null); }catch(e2){ ranked=null; } }
         let good, fallback=false;
@@ -955,10 +997,11 @@ function openFindSimilar(){
         res.querySelectorAll("[data-simopen]").forEach(el=>{ const open=()=>{ const sid=el.dataset.simopen; closeSheet(); openFactory(sid); };
           el.addEventListener("click",e=>{ if(e.target.closest("a")) return; open(); }); el.addEventListener("keydown",e=>{ if(e.key==="Enter") open(); }); });
         st.textContent="";
+        findId=await saveFind(findId,id,img,price,rp,good,text,store());
       }catch(e){ st.className="status err"; st.textContent=e?.code==="unreadable"?"Couldn't tell what the product is. Try a closer photo or type what it is.":"Couldn't search ("+(e?.code||"error")+"). Try again."; }
       finally{ go.disabled=false; }
     };
-    const fi=$("#simimg"); if(fi) fi.addEventListener("change",async e=>{ const f=e.target.files[0]; if(!f) return; img=await shrink(f,2000);
+    const fi=$("#simimg"); if(fi) fi.addEventListener("change",async e=>{ const f=e.target.files[0]; if(!f) return; findId=null; img=await shrink(f,2000);
       const u=URL.createObjectURL(img); $("#simprev").innerHTML=`<img class="simthumb" src="${u}" alt="Your photo">`; run(); });
     $("#simgo").onclick=run;
     $("#simtxt").addEventListener("keydown",e=>{ if(e.key==="Enter") run(); });
@@ -2856,6 +2899,7 @@ render();
   db.collection("quotes").onSnapshot(snap=>{ S.quotes=snap.docs.map(x=>({id:x.id,...x.data()})); S.loaded.q=true; render(); }, ()=>{});
   db.collection("rfqs").onSnapshot(snap=>{ S.rfqs=snap.docs.map(x=>({id:x.id,...x.data()})); }, ()=>{});
   db.collection("samples").onSnapshot(snap=>{ S.samples=snap.docs.map(x=>({id:x.id,...x.data()})); render(); }, ()=>{});
+  db.collection("storefinds").onSnapshot(snap=>{ S.finds=snap.docs.map(x=>({id:x.id,...x.data()})); const h=document.getElementById("simhist"); if(h) h.innerHTML=findHistHtml(); }, ()=>{});
   db.collection("docs").onSnapshot(snap=>{ S.docs=snap.docs.map(x=>({id:x.id,...x.data()})); render(); if(detailId) refreshDocs(detailId); }, ()=>{});
   db.doc("settings/defaults").onSnapshot(snap=>{ S.settings={...SET_DEFAULT,...(snap.exists?snap.data():{})}; render(); }, ()=>{});
   db.collection("ptypes").onSnapshot(snap=>{ const m=new Map(), ids=new Set(); snap.docs.forEach(d=>{ ids.add(d.id); const mp=d.data()?.map||{}; for(const k in mp) if(mp[k]&&mp[k].t) m.set(k,mp[k]); }); S.ptypes=m; S.ptypeDocs=ids; render(); }, ()=>{});
