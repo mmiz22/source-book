@@ -996,12 +996,13 @@ async function compRun(){
   finally{ compBusy=false; compRefresh(); }
 }
 async function compCsv(trip){
-  const items=arr(S.finds).filter(x=>x.trip===trip).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)); if(!items.length) return;
+  const many=Array.isArray(trip), ids=many?trip:[trip];
+  const items=arr(S.finds).filter(x=>ids.includes(x.trip)).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)); if(!items.length) return;
   const cp=(num(S.settings.customerPct)||55)/100;
   const rows=[["Date","Store","Product","Brand","Model","Retail $","Regular $","Customer cost $","Best factory","Quoted","Terms","MOQ","Landed $","Margin %","Match %","Factories matched","Features"]];
   for(const x of items){ const t=arr(x.matches)[0], r=+x.price||0, cust=r?r*cp:0, lc=t&&t.landed!==""&&t.landed!=null?+t.landed:null;
     rows.push([x.createdAt?new Date(x.createdAt).toLocaleDateString():"", x.store||"", x.name||x.type||"", x.brand||"", x.model||"", r||"", x.regularPrice||"", cust?cust.toFixed(2):"", t?.company||"", t?t.price:"", t?.incoterm||"", t?.moq||"", lc!=null?lc.toFixed(2):"", (cust&&lc!=null)?Math.round((cust-lc)/cust*100):"", t?.score?Math.round(t.score):"", new Set(arr(x.matches).map(m=>m.supplierId)).size||"", arr(x.features).join("; ")]); }
-  const store=(items[0].store||"store").replace(/[^A-Za-z0-9]+/g,"-");
+  const store=many&&ids.length>1?"all-stores":(items[0].store||"store").replace(/[^A-Za-z0-9]+/g,"-");
   try{ await downloads.save({filename:`comp-shop-${store}-${today()}.csv`, data:"\ufeff"+csv(rows)}); }catch(e){ if(e?.code&&e.code!=="declined"&&e.code!=="cancelled") toast("Report didn't save"); }
 }
 function openCompShop(tripId){
@@ -1010,7 +1011,7 @@ function openCompShop(tripId){
   openSheet("Comp shop",`
     <div class="note">Walk the store and snap each product with its price tag in the shot. Keep shooting; Claude reads each photo in the background and lines it up against your factory quotes.</div>
     <div class="field"><label for="compstore">Store</label><input id="compstore" placeholder="e.g. Five Below, Walmart" value="${esc(ex?ex.store:last)}"></div>
-    <div class="row"><label class="btn primary simshot">📷 Snap products<input type="file" accept="image/*" id="compimg" multiple hidden></label>${downloads?`<button class="btn" id="compcsv">Trip report (CSV)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}</div>
+    <div class="row"><label class="btn primary simshot">📷 Snap products<input type="file" accept="image/*" id="compimg" multiple hidden></label>${downloads?`<button class="btn" id="compcsv">Trip report (CSV)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}${downloads?`<button class="btn ghost" id="compday">All stores today (CSV)</button>`:""}</div>
     <div id="complist" class="stack" data-trip=""></div>
     <div id="comptrips" class="stack" data-cur=""></div>`, body=>{
     const setTrip=t=>{ trip=t; $("#complist").dataset.trip=t||""; $("#comptrips").dataset.cur=t||""; compRefresh(); };
@@ -1018,10 +1019,16 @@ function openCompShop(tripId){
     setTrip(trip);
     const storeV=()=>{ const v=$("#compstore").value.trim(); try{ localStorage.setItem("sb-laststore",v); }catch{} return v; };
     $("#compimg").addEventListener("change",async e=>{ const fs=[...e.target.files]; e.target.value=""; if(!fs.length) return;
-      if(!trip) setTrip("trip-"+Date.now().toString(36));
-      for(const f of fs){ try{ compQ.push({trip,store:storeV(),img:await shrink(f,2000)}); }catch(err){} }
+      const sv=storeV(), d0=new Date(); d0.setHours(0,0,0,0);
+      const curT=trip?tripsOf().find(t=>t.id===trip):null, qStore=compQ.find(j=>j.trip===trip)?.store;
+      const curStore=curT?curT.store:(qStore??null);
+      if(!trip||(curStore!=null&&curStore.trim().toLowerCase()!==sv.toLowerCase())){
+        const same=tripsOf().find(t=>t.at>=d0.getTime()&&(t.store||"").trim().toLowerCase()===sv.toLowerCase());
+        setTrip(same?same.id:"trip-"+Date.now().toString(36)); if(curStore!=null) toast(same?`Back to today's ${sv||"store"} trip`:`New trip: ${sv||"store"}`); }
+      for(const f of fs){ try{ compQ.push({trip,store:sv,img:await shrink(f,2000)}); }catch(err){} }
       compRefresh(); compRun(); });
     const nb=$("#compnew"); if(nb) nb.onclick=()=>{ setTrip(null); toast("New trip. Snap the first product."); };
+    const db2=$("#compday"); if(db2) db2.onclick=()=>{ const d0=new Date(); d0.setHours(0,0,0,0); const ids=tripsOf().filter(t=>t.at>=d0.getTime()).map(t=>t.id); if(ids.length) compCsv(ids); else toast("No products today yet"); };
     const cb=$("#compcsv"); if(cb) cb.onclick=()=>{ if(trip) compCsv(trip); else toast("No products in this trip yet"); };
     body.addEventListener("click",async e=>{
       const del=e.target.closest("[data-finddel]"); if(del){ e.preventDefault(); if(del.dataset.sure!=="1"){ del.dataset.sure="1"; del.textContent="Tap again to remove"; return; } try{ await db.doc("storefinds/"+del.dataset.finddel).delete(); }catch(err){ toast("Couldn't remove"); } return; }
