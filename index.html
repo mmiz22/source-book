@@ -2868,6 +2868,7 @@ render();
     const g=document.createElement("button"); g.className="btn sm ghost"; g.textContent="Settings"; g.onclick=openSettings; $(".brand").append(g);
     if(sample){ const fs=document.createElement("button"); fs.className="btn sm"; fs.id="findsim"; fs.textContent="📷 Find similar"; fs.onclick=openFindSimilar; $(".brand").append(fs); }
     else if(assets&&db){ const fs=document.createElement("button"); fs.className="btn sm"; fs.id="findsim"; fs.textContent="📷 Find similar"; fs.onclick=()=>{ window.__dbPreset="find"; openDropBox(); }; $(".brand").append(fs); }
+    if(sample&&assets&&db){ const dbx=document.createElement("button"); dbx.className="btn sm ghost"; dbx.id="dropbtn"; dbx.textContent="Send a file (read hourly)"; dbx.onclick=()=>openDropBox(); $(".brand").append(dbx); }
     const hb=document.createElement("button"); hb.className="btn sm ghost"; hb.textContent="＋ Add by hand"; hb.onclick=()=>openFactoryForm(); $(".brand").append(hb);
     scanResume();
   }

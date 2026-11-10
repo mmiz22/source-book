@@ -268,17 +268,92 @@ const started = (async () => {
   // sign-out link
   const so = document.createElement("span"); so.id = "gh-signout"; so.textContent = "Sign out";
   so.onclick = async () => { try { localStorage.removeItem(TOKEN_KEY); } catch {} try { await caches.delete("sb-auth"); } catch {} location.reload(); };
-  const brand = document.querySelector(".brand"); if (brand) { const w = document.createElement("button"); w.className = "btn sm ghost"; w.textContent = "Sign out"; w.onclick = so.onclick; brand.append(w); }
+  const brand = document.querySelector(".brand"); if (brand) { const w = document.createElement("button"); w.className = "btn sm ghost"; w.textContent = "Sign out"; w.onclick = so.onclick; brand.append(w);
+    const a = document.createElement("button"); a.className = "btn sm ghost"; a.id = "ai-btn"; a.textContent = aiKey() ? "⚡ Instant reading: on" : "⚡ Instant reading"; a.onclick = aiSettings; brand.append(a); }
 })();
 started.then(resolveReady, e => { console.error(e); setStatus("Couldn't load from GitHub: " + (e.message || e), true); rejectReady(e); });
 
 window.addEventListener("beforeunload", e => { if (pending.size || [...saving.values()].some(Boolean)) { e.preventDefault(); e.returnValue = ""; } });
+
+/* ---- Claude reading (instant): calls the Claude API straight from this browser with a key the user pastes in ---- */
+const AI_KEY = "sb-claude-key";
+const AI_API = window.SB_AI_BASE || "https://api.anthropic.com";
+const AI_MODELS = { quick: "claude-haiku-5-5", default: "claude-sonnet-5-5" };
+function aiKey() { try { return localStorage.getItem(AI_KEY) || ""; } catch { return ""; } }
+function blobB64(b) { return new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = no; r.readAsDataURL(b); }); }
+function aiErr(code, msg) { const e = new Error(msg || code); e.code = code; return e; }
+function parseJson(t) {
+  t = String(t || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+  try { return JSON.parse(t); } catch {}
+  const a = t.indexOf("{"), b = t.indexOf("["); const s = a < 0 ? b : b < 0 ? a : Math.min(a, b);
+  if (s >= 0) { const close = t[s] === "{" ? "}" : "]"; const e = t.lastIndexOf(close); if (e > s) { try { return JSON.parse(t.slice(s, e + 1)); } catch {} } }
+  throw aiErr("unreadable", "Claude's answer wasn't valid JSON");
+}
+const ai = {
+  async limits() { return { images: { maxCount: 8, maxBytes: 4500000 }, tools: false }; },
+  async json(prompt, opts = {}) {
+    const key = aiKey(); if (!key) throw aiErr("not_granted", "No Claude API key on this device");
+    const content = [];
+    for (const img of (opts.images || [])) {
+      if (!img) continue;
+      const type = /^image\/(jpeg|png|gif|webp)$/.test(img.type || "") ? img.type : "image/jpeg";
+      if (img.size > 4500000) throw aiErr("image_rejected", "Image too large");
+      content.push({ type: "image", source: { type: "base64", media_type: type, data: await blobB64(img) } });
+    }
+    content.push({ type: "text", text: String(prompt) + "\n\nAnswer with valid JSON only. No explanation and no code fences." });
+    let r;
+    try {
+      r = await fetch(AI_API + "/v1/messages", { method: "POST", headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({ model: AI_MODELS[opts.modelTier] || AI_MODELS.default, max_tokens: 16000, messages: [{ role: "user", content }] }) });
+    } catch (e) { throw aiErr("network", "Couldn't reach Claude"); }
+    if (!r.ok) {
+      let msg = ""; try { msg = (await r.json())?.error?.message || ""; } catch {}
+      if (r.status === 401 || r.status === 403) throw aiErr("not_granted", msg || "The Claude API key was not accepted");
+      if (r.status === 429) throw aiErr("rate_limited", msg);
+      if (r.status === 413 || /too (large|long)|maximum/i.test(msg)) throw aiErr("prompt_too_large", msg);
+      if (r.status === 400 && /image/i.test(msg)) throw aiErr("image_rejected", msg);
+      if (r.status === 400 && /credit|billing|balance/i.test(msg)) throw aiErr("quota_exceeded", msg);
+      throw aiErr("failed", msg || ("Claude error " + r.status));
+    }
+    const j = await r.json();
+    const text = (j.content || []).filter(c => c.type === "text").map(c => c.text).join("");
+    return parseJson(text);
+  }
+};
+function aiSettings() {
+  const has = !!aiKey();
+  const wrap = document.createElement("div"); wrap.id = "gh-signin";
+  wrap.innerHTML = `<div class="box"><h1 style="font-size:1.3rem">Instant reading</h1>
+    <p>${has ? "Instant reading is <b>on</b> for this device. Cards, quote sheets and store photos are read by Claude right away." : "Paste a Claude API key to have cards, quote sheets and store photos read right away on this device. Without a key, uploads wait for the hourly reader."}</p>
+    <label for="ai-key">Claude API key</label><input id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="${has ? "A key is saved. Paste a new one to replace it" : "sk-ant-..."}">
+    <button id="ai-save">Save and turn on</button>
+    ${has ? '<button id="ai-off" style="background:#7a2e2e;margin-top:8px">Turn off and remove the key</button>' : ""}
+    <button id="ai-cancel" style="background:transparent;color:inherit;border:1px solid #8886;margin-top:8px">Cancel</button>
+    <p class="err" id="ai-err"></p>
+    <p class="fine">The key stays in this browser only and is sent only to Claude. Create one at platform.claude.com → API keys. Usage is billed to that API account; Max, Ultra and Team plans include monthly API credits you can link to it.</p></div>`;
+  document.body.append(wrap);
+  const err = wrap.querySelector("#ai-err");
+  wrap.querySelector("#ai-cancel").onclick = () => wrap.remove();
+  const off = wrap.querySelector("#ai-off"); if (off) off.onclick = () => { try { localStorage.removeItem(AI_KEY); } catch {} location.reload(); };
+  wrap.querySelector("#ai-save").onclick = async () => {
+    const k = wrap.querySelector("#ai-key").value.trim(); if (!k) { err.textContent = "Paste the key first."; return; }
+    err.textContent = "Checking…";
+    try {
+      const r = await fetch(AI_API + "/v1/messages", { method: "POST", headers: { "content-type": "application/json", "x-api-key": k, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({ model: AI_MODELS.quick, max_tokens: 5, messages: [{ role: "user", content: "Say OK" }] }) });
+      if (!r.ok) { let m = ""; try { m = (await r.json())?.error?.message || ""; } catch {} err.textContent = r.status === 401 ? "That key wasn't accepted. Check it and try again." : ("Claude said: " + (m || r.status)); return; }
+    } catch (e) { err.textContent = "Couldn't reach Claude. Check your connection."; return; }
+    try { localStorage.setItem(AI_KEY, k); } catch {}
+    location.reload();
+  };
+}
 
 window.claude = {
   use(name) {
     if (name === "db") return started.then(() => db);
     if (name === "assets") return started.then(() => assets);
     if (name === "downloads") return Promise.resolve(downloads);
+    if (name === "sample") return started.then(() => { if (aiKey()) return ai; throw new Error("sample needs a Claude API key"); });
     return Promise.reject(new Error(name + " is not available in the GitHub version"));
   }
 };
