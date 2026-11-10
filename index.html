@@ -443,7 +443,7 @@ const $ = s => document.querySelector(s);
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const arr = v => Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
 const today = () => new Date().toISOString().slice(0,10);
-const isExt = id => /^https?:\/\//i.test(String(id||""));
+const isExt = id => /^(https?:\/\/|blob:)/i.test(String(id||""));
 const blobUrl = id => !id ? "" : isExt(id) ? id : "_blob/" + String(id).replace(/^\/?_blob\//,"");
 
 function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; $("#toastRoot").append(t); setTimeout(()=>t.remove(),2600); }
@@ -2331,6 +2331,28 @@ function sheetHtml(data){
   return `${sh.length>1?`<div class="tabs" style="flex-wrap:wrap;margin:8px">${sh.map((s,i)=>`<button class="chip" data-sh="${i}" aria-pressed="${i===0}">${esc(s.name)}</button>`).join("")}</div>`:""}${sh.map((s,i)=>{ const pm={}; arr(s.pics).forEach(p=>{ (pm[p.r+","+p.c]=pm[p.r+","+p.c]||[]).push(p.id); });
     return `<div class="xtab" data-shp="${i}" ${i?"hidden":""}><table class="xt">${s.rows.map((r,ri)=>`<tr>${r.map((c,ci)=>{ const im=(pm[ri+","+ci]||[]).map(id=>`<a href="${blobUrl(id)}" data-name="Product photo"><img class="ximg" src="${blobUrl(id)}" alt="Product photo" loading="lazy"></a>`).join(""); return ri===0&&!im?`<th>${esc(c)}</th>`:`<td>${im}${esc(c)}</td>`; }).join("")}</tr>`).join("")}</table></div>`; }).join("")}`;
 }
+async function rawSheetData(bytes,name){
+  const X=await getXlsx(); const wb=X.read(bytes,{type:"array",bookFiles:true,cellDates:true});
+  if(!wb||!wb.SheetNames||!wb.SheetNames.length) return null;
+  let found=[]; try{ found=findPictures(X,wb); }catch(e){}
+  const media={}; for(const p of found){ if(media[p.media]!==undefined) continue; let b=null; try{ b=zipBytes(wb.files||{},p.media); }catch(e){} media[p.media]=(b&&b.length>800)?URL.createObjectURL(new Blob([b],{type:/png$/i.test(p.media)?"image/png":/gif$/i.test(p.media)?"image/gif":"image/jpeg"})):null; }
+  const pics=found.filter(p=>media[p.media]).slice(0,400);
+  const sheets=wb.SheetNames.map(n=>{ const ws=wb.Sheets[n]; if(!ws||!ws["!ref"]) return null; const rg=X.utils.decode_range(ws["!ref"]);
+    let rows=X.utils.sheet_to_json(ws,{header:1,raw:false,defval:"",blankrows:true});
+    rows=rows.slice(0,1500).map(r=>r.slice(0,40).map(v=>String(v??"").replace(/^=?DISPIMG\(.*\)$/i,"").slice(0,300)));
+    const sp=pics.filter(p=>p.sheet===n).map(p=>({r:p.row-rg.s.r,c:p.col-rg.s.c,id:media[p.media]})).filter(p=>p.r>=0&&p.r<1500&&p.c>=0&&p.c<40);
+    let h=0,w=0; rows.forEach((r,i)=>{ for(let j=r.length-1;j>=0;j--) if(r[j]!==""){ w=Math.max(w,j+1); h=i+1; break; } }); sp.forEach(p=>{ h=Math.max(h,p.r+1); w=Math.max(w,p.c+1); });
+    rows=rows.slice(0,h).map(r=>{ r=r.slice(0,w); while(r.length<w) r.push(""); return r; }); while(rows.length<h) rows.push(Array(w).fill(""));
+    return {name:n,rows,pics:sp}; }).filter(s=>s&&(s.rows.length||s.pics.length));
+  return sheets.length?{kind:"sheet",name,sheets}:null;
+}
+function fileKind(u8){ const a=u8[0],b=u8[1],c=u8[2],d=u8[3];
+  if(a===0x25&&b===0x50&&c===0x44&&d===0x46) return "pdf";
+  if(a===0xff&&b===0xd8) return "jpg"; if(a===0x89&&b===0x50) return "png"; if(a===0x47&&b===0x49) return "gif";
+  if(a===0xd0&&b===0xcf&&c===0x11&&d===0xe0) return "ole";
+  if(a===0x50&&b===0x4b){ const t=new TextDecoder("latin1").decode(u8.subarray(0,Math.min(u8.length,4000))); if(t.includes("xl/")) return "xlsx"; if(t.includes("word/")) return "docx"; if(t.includes("ppt/")) return "pptx"; return "zip"; }
+  if(a===0x52&&b===0x61&&c===0x72) return "rar";
+  return ""; }
 function loadScript(u){ return new Promise((ok,no)=>{ const el=document.createElement("script"); el.src=u; el.onload=ok; el.onerror=()=>no(new Error("load")); document.head.append(el); }); }
 function getPdfjs(){ if(!pdfjsP) pdfjsP=(async()=>{ await loadScript(PDFJS+"pdf.min.js"); await loadScript(PDFJS+"pdf.worker.min.js"); const L=window.pdfjsLib; L.GlobalWorkerOptions.workerSrc=PDFJS+"pdf.worker.min.js"; return L; })().catch(e=>{ pdfjsP=null; throw e; }); return pdfjsP; }
 let camStop=null;
@@ -2340,8 +2362,8 @@ async function openViewer(url,name){
   $("#viewerRoot").innerHTML=`<div class="viewer" role="dialog" aria-modal="true" aria-label="${esc(name)}"><div class="vhead"><div class="vtitle">${esc(name)}</div>${downloads?`<button class="btn sm ghost" id="vdl">Download</button>`:""}<button class="x" id="vx" aria-label="Close">✕</button></div><div class="vbody" id="vbody"><div class="status">Opening…</div></div></div>`;
   $("#vx").onclick=closeViewer;
   const body=$("#vbody");
-  let blob=null;
-  const dl=$("#vdl"); if(dl) dl.onclick=async()=>{ try{ if(!blob) return; let fn=name||"file"; if(!/\.(pdf|png|jpe?g|webp|gif)$/i.test(fn)) fn+=(blob.type.startsWith("image/")?".jpg":".pdf"); await downloads.save({filename:fn,data:blob}); }catch(e){} };
+  let blob=null, vkind="";
+  const dl=$("#vdl"); if(dl) dl.onclick=async()=>{ try{ if(!blob) return; let fn=name||"file"; if(!/\.(pdf|png|jpe?g|webp|gif|xlsx|xlsm|xls|csv|docx?|pptx?|et|rar|zip)$/i.test(fn)) fn+="."+(({ole:"xls",jpg:"jpg",png:"png",gif:"gif",xlsx:"xlsx",docx:"docx",pptx:"pptx",zip:"zip",rar:"rar"})[vkind]||(blob.type.startsWith("image/")?"jpg":"pdf")); await downloads.save({filename:fn,data:blob}); }catch(e){} };
   try{
     const r=await fetch(url); if(!r.ok) throw new Error("http "+r.status); blob=await r.blob(); if(tok!==viewTok) return;
     if((blob.type||"").includes("json")||isSheetName(name)){ let data=null; try{ data=JSON.parse(await blob.text()); }catch(e){}
@@ -2350,7 +2372,11 @@ async function openViewer(url,name){
             await downloads.save({filename:data.orig.name||("quote."+data.orig.ext),data:new Blob([u],{type:data.orig.ext==="csv"?"text/csv":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"})}); }catch(e){ if(e?.code&&e.code!=="declined") toast("Couldn't save the file ("+e.code+")."); } }; }
           else dlb.remove(); }
         body.innerHTML=sheetHtml(data); body.querySelectorAll("[data-sh]").forEach(b=>b.onclick=()=>{ body.querySelectorAll("[data-sh]").forEach(x=>x.setAttribute("aria-pressed",x===b)); body.querySelectorAll("[data-shp]").forEach(p=>p.hidden=p.dataset.shp!==b.dataset.sh); }); return; } }
-    if((blob.type||"").startsWith("image/")){ const img=document.createElement("img"); img.className="vimg"; img.alt=name||""; img.src=URL.createObjectURL(blob); body.replaceChildren(img); return; }
+    const u8=new Uint8Array(await blob.arrayBuffer()); vkind=fileKind(u8); if(tok!==viewTok) return;
+    if(vkind==="xlsx"||vkind==="ole"||(isSheetName(name)&&vkind!=="pdf"&&!vkind.match(/jpg|png|gif/))){ let data=null; try{ data=await rawSheetData(u8,name); }catch(e){} if(tok!==viewTok) return;
+      if(data){ body.innerHTML=sheetHtml(data); body.querySelectorAll("[data-sh]").forEach(b=>b.onclick=()=>{ body.querySelectorAll("[data-sh]").forEach(x=>x.setAttribute("aria-pressed",x===b)); body.querySelectorAll("[data-shp]").forEach(p=>p.hidden=p.dataset.shp!==b.dataset.sh); }); return; } }
+    if(vkind==="docx"||vkind==="pptx"||vkind==="zip"||vkind==="rar"||vkind==="ole"){ body.innerHTML=`<div class="status">This is a ${({docx:"Word document",pptx:"PowerPoint file",zip:"zip file",rar:"compressed (.rar) file",ole:"older Office file"})[vkind]}, which can't be previewed here. Tap Download to open it on your device.</div>`; return; }
+    if((blob.type||"").startsWith("image/")||/jpg|png|gif/.test(vkind)){ const img=document.createElement("img"); img.className="vimg"; img.alt=name||""; img.src=URL.createObjectURL(blob); body.replaceChildren(img); return; }
     const L=await getPdfjs(); if(tok!==viewTok) return;
     const pdf=await L.getDocument({data:new Uint8Array(await blob.arrayBuffer()),isEvalSupported:false}).promise; if(tok!==viewTok) return;
     const W=Math.min(body.clientWidth-8,1000), dpr=Math.min(window.devicePixelRatio||1,2);
