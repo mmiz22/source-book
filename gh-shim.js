@@ -174,6 +174,8 @@ async function flush(p) {
   if (pending.has(p)) { saving.set(p, true); setTimeout(() => flush(p), 50); }
 }
 
+function isPlain(o) { return !!o && typeof o === "object" && !Array.isArray(o) && !(o.__delete__ === true); }
+function deepMerge(t, s) { for (const [k, v] of Object.entries(s)) { if (isPlain(v) && isPlain(t[k])) deepMerge(t[k], v); else t[k] = v; } return t; }
 function setPath(obj, key, val) {
   if (!key.includes(".")) { obj[key] = val; return; }
   const parts = key.split("."); let o = obj;
@@ -203,6 +205,7 @@ function docRef(c, id) {
       const next = clone(cur);
       for (const [k, v] of Object.entries(clone(patch))) {
         if (v && typeof v === "object" && v.__delete__ === true) { if (!k.includes(".")) delete next[k]; else setPath(next, k, undefined); }
+        else if (!k.includes(".") && isPlain(v) && isPlain(next[k])) deepMerge(next[k], v);
         else setPath(next, k, v);
       }
       stripDeletes(next); col(c).set(id, next); emit(c, id); queueWrite(c, id, next);

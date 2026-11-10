@@ -347,7 +347,7 @@ a.hts{color:var(--accent);text-decoration:underline;white-space:nowrap}
 .picktbl img{width:40px;height:40px;object-fit:contain;background:#fff;border-radius:4px}
 /* ---------- fit check badges ---------- */
 .fit{font-family:var(--mono);font-size:.74rem;font-weight:500;padding:2px 8px;border-radius:999px;white-space:nowrap;border:1px solid currentColor;display:inline-block;line-height:1.35}
-.fit-ok{color:var(--ok)} .fit-tight{color:var(--warn)} .fit-over{color:var(--stamp)} .fit-none{color:var(--muted);border-style:dashed}
+.fit-best{font-weight:700;border-width:2px} .fit-ok{color:var(--ok)} .fit-tight{color:var(--warn)} .fit-over{color:var(--stamp)} .fit-none{color:var(--muted);border-style:dashed}
 .banner{background:var(--accent-soft);color:var(--fg);border-radius:10px;padding:10px 12px;font-size:.86rem;display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;justify-content:space-between}
 .banner span{min-width:0;flex:1 1 240px}
 /* ---------- quotes grouped by product type ---------- */
@@ -562,8 +562,8 @@ const fnv=(s,seed)=>{ let h=seed>>>0; for(let i=0;i<s.length;i++){ h^=s.charCode
 function itemKey(s){ const n=normItem(s); const h1=fnv(n,2166136261), h2=fnv(n,(0x811c9dc5^0x9e3779b9)>>>0); return [h1.toString(36)+h2.toString(36), h1%8]; }
 const tslug=t=>String(t||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 function typeOf(l){ if(!l||!l.item) return null; return S.ptypes.get(itemKey(l.item)[0])||null; }
-function typeRetail(t){ return t?num(S.targets[tslug(t)]?.retail):null; }
-function retailFor(l,t){ const own=num(l?.target); if(own!=null&&own>0) return own; const ty=t||((x=>x&&!x.a?x.t:null)(typeOf(l))); return typeRetail(ty); }
+function typeRetail(t,c){ if(!t) return null; const e=S.targets[tslug(t)]; const cu=c===undefined?activeCust():c; const by=cu&&e?.by?num(e.by[cu.name]):null; return by!=null&&by>0?by:num(e?.retail); }
+function retailFor(l,t,c){ const own=num(l?.target); if(own!=null&&own>0) return own; const ty=t||((x=>x&&!x.a?x.t:null)(typeOf(l))); return typeRetail(ty,c); }
 const setPct=(k,d)=>{ const v=num(S.settings[k]); return v==null?d:v; };
 // customers: one per line "Name = their margin %"; customer cost = 100 - margin % of retail
 function customers(){ return String(S.settings.customers||"").split(/\n|;/).map(x=>{ const m=x.match(/^\s*(.+?)\s*[=:]\s*([\d.]+)\s*%?\s*$/); return m&&+m[2]>0&&+m[2]<100?{name:m[1],margin:+m[2]}:null; }).filter(Boolean); }
@@ -573,14 +573,16 @@ function custPct(c){ if(c===undefined) c=activeCust(); return c?100-c.margin:set
 const shortCust=n=>String(n).split(/\s*[\/,]\s*/)[0];
 function fitChips(q,l,t){
   const cs=customers(); if(!cs.length) return fitBadge(fitFor(q,l,t));
-  const out=cs.map(c=>{ const f=fitFor(q,l,t,c); if(!f) return ""; if(f.retail==null) return null;
+  const fs=cs.map(c=>fitFor(q,l,t,c)); let bi=-1; fs.forEach((f,i)=>{ if(f&&f.retail!=null&&(bi<0||f.margin>fs[bi].margin)) bi=i; });
+  if(bi>=0&&fs.filter(f=>f&&f.retail!=null&&Math.abs(f.margin-fs[bi].margin)<1e-9).length>1) bi=-1;
+  const out=cs.map((c,i)=>{ const f=fs[i]; if(!f) return ""; if(f.retail==null) return null;
     const p=Math.round(f.margin*100), cls=f.st==="ok"?"fit-ok":f.st==="tight"?"fit-tight":"fit-over", sym=f.st==="ok"?"✓":f.st==="tight"?"~":"✗";
-    return `<span class="fit ${cls}" title="${esc(c.name)}: customer pays ${usd(f.cc)}, you can land at most ${usd(f.maxL)}; ${p}% margin">${esc(shortCust(c.name))} ${sym} ${p}%</span>`; });
+    return `<span class="fit ${cls}${i===bi?" fit-best":""}" title="${esc(c.name)}${i===bi?" (best margin)":""}: retail ${usd(f.retail)}, customer pays ${usd(f.cc)}, you can land at most ${usd(f.maxL)}; ${p}% margin">${i===bi?"★ ":""}${esc(shortCust(c.name))} ${sym} ${p}%</span>`; });
   return out.includes(null)?`<span class="fit fit-none" title="Set a target retail for this product type to check fit">No target</span>`:out.join(" ");
 }
 function fitFor(q,l,t,c){
   const lc=landed(q,l); if(!lc) return null;
-  const retail=retailFor(l,t); if(retail==null||retail<=0) return {lc,retail:null};
+  const retail=retailFor(l,t,c); if(retail==null||retail<=0) return {lc,retail:null};
   const cust=custPct(c)/100, m=setPct("marginPct",45)/100, min=setPct("minMarginPct",33)/100;
   const cc=retail*cust, maxL=cc*(1-m), margin=(cc-lc.total)/cc;
   const st=margin>=m-1e-9?"ok":margin>=min-1e-9?"tight":"over";
@@ -643,12 +645,12 @@ async function setLinePhoto(qid,idx,file){
   catch(e){ toast(e?.code==="quota_exceeded"?"Photo storage is full. Free up space before adding photos.":"Couldn't save the photo ("+(e?.code||"error")+")."); }
 }
 const costsSet=()=>["dutyPct","tariffPct","freightPerUnit","containerCost","otherPerUnit"].some(k=>num(S.settings[k])!=null);
-async function saveTarget(t,val){
+async function saveTarget(t,val,cust){
   const v=String(val||"").replace(/[^0-9.]/g,"");
   if(v && !(num(v)>0)){ toast("Enter a retail price like 14.99"); return; }
-  const payload={map:{[tslug(t)]:{type:t,retail:v}},updatedAt:Date.now()};
+  const payload={map:{[tslug(t)]:cust?{type:t,by:{[cust]:v}}:{type:t,retail:v}},updatedAt:Date.now()};
   try{ if(S.targetsExists) await db.doc("settings/targets").update(payload); else { await db.doc("settings/targets").set(payload); S.targetsExists=true; }
-    toast(v?`${t}: target retail $${v}`:`${t}: target retail cleared`); }
+    toast(v?`${t}${cust?" at "+shortCust(cust):""}: target retail $${v}`:`${t}${cust?" at "+shortCust(cust):""}: target retail cleared`); }
   catch(e){ toast("Couldn't save the retail ("+(e.code||"error")+")."); }
 }
 async function saveTypes(entries){ // entries: [[itemText,{t,a}]]
@@ -759,11 +761,11 @@ function renderQuotes(L,shown){
     const nf=new Set(g.map(r=>r.q.supplierId)).size, real=t!==UNSORTED&&t!==ADDON_GROUP, tm=real?typeMath(t):null;
     const fits=g.filter(r=>r.f?.st==="ok").length, open=S.openGroups.has(t), show=open?g:g.slice(0,lim);
     return `<section class="tgroup"><div class="thead"><h3>${esc(t)}</h3><span class="tmeta">${g.length} quote${g.length>1?"s":""} · ${nf} factor${nf>1?"ies":"y"}${tm&&fits?` · ${fits} fit`:""}</span></div>
-      ${real?`<div class="tcalc"><label>Target retail $<input data-retail="1" data-type="${esc(t)}" value="${esc(S.targets[tslug(t)]?.retail||"")}" inputmode="decimal" placeholder="e.g. 14.99" ${canWrite?"":"disabled"} aria-label="Target retail for ${esc(t)}"></label><label title="${esc(dutyTitle(typeDuty(t)))}">Duty + tariff %<input data-duty="1" data-type="${esc(t)}" value="${esc(typeDuty(t)?.pct??"")}" inputmode="decimal" placeholder="${esc(String((num(S.settings.dutyPct)??0)+(num(S.settings.tariffPct)??0)))}" ${canWrite?"":"disabled"} aria-label="Duty and tariff percent for ${esc(t)}" style="width:64px"></label>${typeDuty(t)?.hts?`<span class="note" title="${esc(dutyTitle(typeDuty(t)))}">HTS ${htsA(esc(typeDuty(t).hts))}</span>`:""}${tm?`<span>Customer cost <b>${usd(tm.cc)}</b></span><span>Max landed <b>${usd(tm.maxL)}</b></span><span>Max FOB ≈ <b>${tm.maxFob>0?usd(tm.maxFob):"—"}</b></span>`:`<span>Set a target retail to check which quotes fit.</span>`}</div>`:""}
+      ${real?`<div class="tcalc"><label>Target retail $<input data-retail="1" data-type="${esc(t)}" value="${esc(S.targets[tslug(t)]?.retail||"")}" inputmode="decimal" placeholder="e.g. 14.99" ${canWrite?"":"disabled"} aria-label="Target retail for ${esc(t)}"></label>${customers().length>1?customers().map(c=>`<label title="Retail for this product at ${esc(c.name)}. Leave blank to use the target retail.">${esc(shortCust(c.name))} $<input data-retail="1" data-cust="${esc(c.name)}" data-type="${esc(t)}" value="${esc(S.targets[tslug(t)]?.by?.[c.name]||"")}" inputmode="decimal" placeholder="${esc(S.targets[tslug(t)]?.retail||"same")}" ${canWrite?"":"disabled"} aria-label="Retail for ${esc(t)} at ${esc(c.name)}" style="width:64px"></label>`).join(""):""}<label title="${esc(dutyTitle(typeDuty(t)))}">Duty + tariff %<input data-duty="1" data-type="${esc(t)}" value="${esc(typeDuty(t)?.pct??"")}" inputmode="decimal" placeholder="${esc(String((num(S.settings.dutyPct)??0)+(num(S.settings.tariffPct)??0)))}" ${canWrite?"":"disabled"} aria-label="Duty and tariff percent for ${esc(t)}" style="width:64px"></label>${typeDuty(t)?.hts?`<span class="note" title="${esc(dutyTitle(typeDuty(t)))}">HTS ${htsA(esc(typeDuty(t).hts))}</span>`:""}${tm?`<span>Customer cost <b>${usd(tm.cc)}</b></span><span>Max landed <b>${usd(tm.maxL)}</b></span><span>Max FOB ≈ <b>${tm.maxFob>0?usd(tm.maxFob):"—"}</b></span>`:`<span>Set a target retail to check which quotes fit.</span>`}</div>`:""}
       ${show.map((r,i)=>`<div class="qrow2${i===0&&r.f?.st==="ok"&&g.length>1?" best":""}" data-open="${esc(r.q.supplierId)}" tabindex="0" role="button">
         ${r.l.img?`<img class="pimg" src="${esc(r.l.img)}" alt="" loading="lazy">`:`<div class="ph"></div>`}
         <div class="who">${esc(r.s?.company||r.s?.companyChinese||"Unknown factory")}</div>
-        <div class="nums"><span title="${r.f?.lc?esc("Landed: "+lcTitle(r.f.lc)):"Factory price"}">${r.f?.lc?usd(r.f.lc.total):money(r.l.price,r.q.currency)}</span>${real?fitBadge(r.f):""}</div>
+        <div class="nums"><span title="${r.f?.lc?esc("Landed: "+lcTitle(r.f.lc)):"Factory price"}">${r.f?.lc?usd(r.f.lc.total):money(r.l.price,r.q.currency)}</span>${real?(customers().length>1?fitChips(r.q,r.l,t):fitBadge(r.f)):""}</div>
         <div class="what">${esc(r.l.item||"Item")}</div>
         <div class="meta2">${esc([`${money(r.l.price,r.q.currency)} ${r.q.incoterm||""}`.trim(), r.l.moq?`MOQ ${r.l.moq}`:"", r.q.date].filter(Boolean).join(" · "))}${(()=>{ const o=originalsFor(r.q)[0]; return o?` <a class="linkbtn retype" href="${blobUrl(o.file)}" data-name="${esc(o.name)}">Original</a>`:""; })()}${canWrite&&r.l.item?` <button class="linkbtn retype" data-retype="${esc(r.l.item)}">Change type</button>`:""}</div>
       </div>`).join("")}
@@ -2381,7 +2383,7 @@ $("#list").addEventListener("click",e=>{
   { const rd=e.target.closest("[data-rdraft]"); if(rd){ e.stopPropagation(); return openMessage(rd.dataset.rdraft); } }
   if(e.target.closest("input,select,label,textarea")) return;
   const o=e.target.closest("[data-open]"); if(o) return openFactory(o.dataset.open); if(e.target.closest('[data-act="add"]')) openFactoryForm(); });
-$("#list").addEventListener("change",e=>{ const i=e.target.closest("[data-retail]"); if(i) saveTarget(i.dataset.type,i.value); const d=e.target.closest("[data-duty]"); if(d) saveDuty(d.dataset.type,d.value); });
+$("#list").addEventListener("change",e=>{ const i=e.target.closest("[data-retail]"); if(i) saveTarget(i.dataset.type,i.value,i.dataset.cust||undefined); const d=e.target.closest("[data-duty]"); if(d) saveDuty(d.dataset.type,d.value); });
 $("#list").addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.matches("[data-retail],[data-duty]")){ e.target.blur(); return; } if(e.key!=="Enter"&&e.key!==" ") return; if(e.target.matches("input,select,textarea,button,a")) return; const o=e.target.closest("[data-open]"); if(o){ e.preventDefault(); openFactory(o.dataset.open); } });
 $("#cats").addEventListener("click",e=>{ const b=e.target.closest("[data-layout]"); if(!b) return; S.layout=b.dataset.layout; try{ localStorage.setItem("sb-layout",S.layout); }catch{}  render(); });
 $("#cats").addEventListener("change",e=>{ const id=e.target.id;
