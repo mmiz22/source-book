@@ -941,7 +941,7 @@ function findHistHtml(){
       <div class="row"><button class="btn sm ghost" data-finddel="${esc(x.id)}">Remove from history</button></div>
     </details>`; }).join("");
 }
-async function saveFind(findId, id, img, price, rp, good, text, store){
+async function saveFind(findId, id, img, price, rp, good, text, store, trip){
   if(!db) return findId;
   try{
     const ref=findId?db.doc("storefinds/"+findId):db.collection("storefinds").doc();
@@ -950,10 +950,85 @@ async function saveFind(findId, id, img, price, rp, good, text, store){
     if(!photo&&img&&assets){ try{ photo=(await assets.upload(await shrink(img,1200))).id; }catch(e){ photo=""; } }
     const doc={ createdAt:prev?.createdAt||Date.now(), updatedAt:Date.now(), name:id.name||"", type:id.type||"", brand:id.brand||"", model:id.model||"",
       price:price||"", regularPrice:rp||"", priceNote:id.price_note||"", packageText:String(id.package_text||"").slice(0,300), features:arr(id.features).slice(0,12).map(String),
-      store:store||"", note:text||"", photo,
-      matches:arr(good).slice(0,12).map(x=>({supplierId:x.r.s.id, company:x.r.s.company||x.r.s.companyChinese||"", item:String(x.r.l.item||"").slice(0,200), price:x.r.l.price??"", currency:x.r.q.currency||"USD", incoterm:x.r.q.incoterm||"", moq:x.r.l.moq||"", date:x.r.q.date||"", score:x.score||0})) };
+      store:store||"", note:text||"", photo, ...(trip||prev?.trip?{trip:trip||prev.trip}:{}),
+      matches:arr(good).slice(0,12).map(x=>({supplierId:x.r.s.id, company:x.r.s.company||x.r.s.companyChinese||"", item:String(x.r.l.item||"").slice(0,200), price:x.r.l.price??"", currency:x.r.q.currency||"USD", incoterm:x.r.q.incoterm||"", moq:x.r.l.moq||"", date:x.r.q.date||"", score:x.score||0, landed:(()=>{ try{ const lc=landed(x.r.q,x.r.l); return lc?+lc.total.toFixed(3):""; }catch(e){ return ""; } })()})) };
     await ref.set(doc); return ref.id;
   }catch(e){ return findId; }
+}
+/* ---------- comp shop: walk a store, snap products, get a trip report ---------- */
+const compQ=[]; let compBusy=false;
+function tripsOf(){ const m=new Map(); for(const x of arr(S.finds)){ if(!x.trip) continue; const t=m.get(x.trip)||{id:x.trip,store:x.store||"",items:[],at:0}; t.items.push(x); t.at=Math.max(t.at,x.createdAt||0); if(x.store) t.store=x.store; m.set(x.trip,t); } return [...m.values()].sort((a,b)=>b.at-a.at); }
+function compRowHtml(x){
+  const m=arr(x.matches), top=m[0], retail=+x.price||0, cust=retail?retail*(num(S.settings.customerPct)||55)/100:0;
+  const lc=top&&top.landed!==""&&top.landed!=null?+top.landed:null, mg=(cust&&lc!=null)?(cust-lc)/cust:null;
+  return `<details class="findrow"><summary>
+    ${x.photo?`<img class="pimg" src="${esc(blobUrl(x.photo))}" alt="" loading="lazy">`:`<div class="ph"></div>`}
+    <div class="findwho"><b>${esc(x.name||x.type||"Product")}</b>${x.brand?` · ${esc(x.brand)}`:""}
+      <div class="note">${retail?`Retail ${usd(retail)}${x.regularPrice&&+x.regularPrice>retail?` (regular ${usd(+x.regularPrice)})`:""}`:"No price read"}</div>
+      <div class="note">${top?`Best: ${esc(top.company||"factory")} · ${esc(money(top.price,top.currency||"USD"))} ${esc(top.incoterm||"")}${lc!=null?` · landed ${usd(lc)}`:""}${mg!=null?` · <b>${Math.round(mg*100)}% margin</b>`:""}`:"No factory quoted this yet"}</div></div></summary>
+    ${x.packageText?`<div class="note">${esc(x.packageText)}</div>`:""}${arr(x.features).length?`<div class="note">${esc(arr(x.features).join(" · "))}</div>`:""}
+    ${m.map(y=>`<div class="findmatch" data-findopen="${esc(y.supplierId||"")}" tabindex="0" role="button"><b>${esc(y.company||"Factory")}</b> ${y.score?`<span class="note">${Math.round(y.score)}% match</span>`:""}<div class="note">${esc(String(y.item||"").slice(0,140))}</div><div class="note">${esc([money(y.price,y.currency||"USD"), y.incoterm, y.landed!==""&&y.landed!=null?`landed ${usd(+y.landed)}`:"", y.moq?`MOQ ${y.moq}`:"", y.date].filter(Boolean).join(" · "))}</div></div>`).join("")}
+    <div class="row"><button class="btn sm ghost" data-finddel="${esc(x.id)}">Remove</button></div></details>`;
+}
+function compListHtml(trip){
+  const items=arr(S.finds).filter(x=>x.trip===trip).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const wait=compQ.filter(j=>j.trip===trip);
+  const withM=items.filter(x=>arr(x.matches).length).length;
+  return `<div class="label">${items.length} product${items.length===1?"":"s"} this trip${items.length?` · ${withM} with a factory match`:""}${wait.length?` · ${wait.length} being read`:""}</div>`+
+    wait.map(j=>`<div class="findrow"><div class="note">${j.err?`Couldn't read this photo (${esc(j.err)}).`:"Reading photo…"}</div></div>`).join("")+items.map(compRowHtml).join("");
+}
+function compRefresh(){ const el=document.getElementById("complist"); if(el) el.innerHTML=compListHtml(el.dataset.trip); const t=document.getElementById("comptrips"); if(t) t.innerHTML=compTripsHtml(t.dataset.cur); }
+function compTripsHtml(cur){ const ts=tripsOf().filter(t=>t.id!==cur); if(!ts.length) return "";
+  return `<div class="label">Earlier trips</div>`+ts.map(t=>`<div class="findrow"><div class="row" style="justify-content:space-between"><div><b>${esc(t.store||"Store")}</b><div class="note">${new Date(t.at).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} · ${t.items.length} product${t.items.length===1?"":"s"}</div></div><div class="row"><button class="btn sm" data-tripopen="${esc(t.id)}">Open</button>${downloads?`<button class="btn sm ghost" data-tripcsv="${esc(t.id)}">Report</button>`:""}</div></div></div>`).join(""); }
+async function compRun(){
+  if(compBusy) return; compBusy=true;
+  try{ while(compQ.some(j=>!j.err)){ const j=compQ.find(x=>!x.err);
+      try{ let img=j.img, id; try{ id=await identifyProduct(img,""); }catch(e){ if(e?.code==="image_rejected"||e?.code==="prompt_too_large"){ img=await shrink(img,900); id=await identifyProduct(img,""); } else throw e; }
+        if(!id||!(id.name||id.type)) throw {code:"unreadable"};
+        const tag=num(String(id.price||"").replace(/[^0-9.]/g,"")), price=tag&&tag>0?tag:null, rp=num(String(id.regular_price||"").replace(/[^0-9.]/g,""));
+        const pool=similarPool(id).slice(0,40); let good=[];
+        if(pool.length){ let ranked=null; try{ ranked=await rankSimilar(id,pool,img); }catch(e){ try{ ranked=await rankSimilar(id,pool,null); }catch(e2){ ranked=null; } }
+          good=ranked?ranked.filter(x=>x.score>=50):pool.filter(r=>r.typeHit>=10).slice(0,8).map(r=>({r,score:0,why:""})); }
+        await saveFind(null,id,img,price,rp,good,"",j.store,j.trip);
+        compQ.splice(compQ.indexOf(j),1);
+      }catch(e){ j.err=e?.code||"error"; }
+      compRefresh(); } }
+  finally{ compBusy=false; compRefresh(); }
+}
+async function compCsv(trip){
+  const items=arr(S.finds).filter(x=>x.trip===trip).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)); if(!items.length) return;
+  const cp=(num(S.settings.customerPct)||55)/100;
+  const rows=[["Date","Store","Product","Brand","Model","Retail $","Regular $","Customer cost $","Best factory","Quoted","Terms","MOQ","Landed $","Margin %","Match %","Factories matched","Features"]];
+  for(const x of items){ const t=arr(x.matches)[0], r=+x.price||0, cust=r?r*cp:0, lc=t&&t.landed!==""&&t.landed!=null?+t.landed:null;
+    rows.push([x.createdAt?new Date(x.createdAt).toLocaleDateString():"", x.store||"", x.name||x.type||"", x.brand||"", x.model||"", r||"", x.regularPrice||"", cust?cust.toFixed(2):"", t?.company||"", t?t.price:"", t?.incoterm||"", t?.moq||"", lc!=null?lc.toFixed(2):"", (cust&&lc!=null)?Math.round((cust-lc)/cust*100):"", t?.score?Math.round(t.score):"", new Set(arr(x.matches).map(m=>m.supplierId)).size||"", arr(x.features).join("; ")]); }
+  const store=(items[0].store||"store").replace(/[^A-Za-z0-9]+/g,"-");
+  try{ await downloads.save({filename:`comp-shop-${store}-${today()}.csv`, data:"\ufeff"+csv(rows)}); }catch(e){ if(e?.code&&e.code!=="declined"&&e.code!=="cancelled") toast("Report didn't save"); }
+}
+function openCompShop(tripId){
+  let trip=tripId||null; const ex=trip?tripsOf().find(t=>t.id===trip):null;
+  const last=(()=>{ try{ return localStorage.getItem("sb-laststore")||""; }catch{ return ""; } })();
+  openSheet("Comp shop",`
+    <div class="note">Walk the store and snap each product with its price tag in the shot. Keep shooting; Claude reads each photo in the background and lines it up against your factory quotes.</div>
+    <div class="field"><label for="compstore">Store</label><input id="compstore" placeholder="e.g. Five Below, Walmart" value="${esc(ex?ex.store:last)}"></div>
+    <div class="row"><label class="btn primary simshot">📷 Snap products<input type="file" accept="image/*" id="compimg" multiple hidden></label>${downloads?`<button class="btn" id="compcsv">Trip report (CSV)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}</div>
+    <div id="complist" class="stack" data-trip=""></div>
+    <div id="comptrips" class="stack" data-cur=""></div>`, body=>{
+    const setTrip=t=>{ trip=t; $("#complist").dataset.trip=t||""; $("#comptrips").dataset.cur=t||""; compRefresh(); };
+    if(!trip){ const today0=new Date(); today0.setHours(0,0,0,0); const cur=tripsOf().find(t=>t.at>=today0.getTime()&&(t.store||"")===last); trip=cur?cur.id:null; }
+    setTrip(trip);
+    const storeV=()=>{ const v=$("#compstore").value.trim(); try{ localStorage.setItem("sb-laststore",v); }catch{} return v; };
+    $("#compimg").addEventListener("change",async e=>{ const fs=[...e.target.files]; e.target.value=""; if(!fs.length) return;
+      if(!trip) setTrip("trip-"+Date.now().toString(36));
+      for(const f of fs){ try{ compQ.push({trip,store:storeV(),img:await shrink(f,2000)}); }catch(err){} }
+      compRefresh(); compRun(); });
+    const nb=$("#compnew"); if(nb) nb.onclick=()=>{ setTrip(null); toast("New trip. Snap the first product."); };
+    const cb=$("#compcsv"); if(cb) cb.onclick=()=>{ if(trip) compCsv(trip); else toast("No products in this trip yet"); };
+    body.addEventListener("click",async e=>{
+      const del=e.target.closest("[data-finddel]"); if(del){ e.preventDefault(); if(del.dataset.sure!=="1"){ del.dataset.sure="1"; del.textContent="Tap again to remove"; return; } try{ await db.doc("storefinds/"+del.dataset.finddel).delete(); }catch(err){ toast("Couldn't remove"); } return; }
+      const to=e.target.closest("[data-tripopen]"); if(to){ openCompShop(to.dataset.tripopen); return; }
+      const tc=e.target.closest("[data-tripcsv]"); if(tc){ compCsv(tc.dataset.tripcsv); return; }
+      const op=e.target.closest("[data-findopen]"); if(op&&op.dataset.findopen&&S.sup.has(op.dataset.findopen)){ const sid=op.dataset.findopen; closeSheet(); openFactory(sid); } });
+  });
 }
 function openFindSimilar(){
   const canPhoto=!!(sample&&imgOK);
@@ -2899,7 +2974,7 @@ render();
   db.collection("quotes").onSnapshot(snap=>{ S.quotes=snap.docs.map(x=>({id:x.id,...x.data()})); S.loaded.q=true; render(); }, ()=>{});
   db.collection("rfqs").onSnapshot(snap=>{ S.rfqs=snap.docs.map(x=>({id:x.id,...x.data()})); }, ()=>{});
   db.collection("samples").onSnapshot(snap=>{ S.samples=snap.docs.map(x=>({id:x.id,...x.data()})); render(); }, ()=>{});
-  db.collection("storefinds").onSnapshot(snap=>{ S.finds=snap.docs.map(x=>({id:x.id,...x.data()})); const h=document.getElementById("simhist"); if(h) h.innerHTML=findHistHtml(); }, ()=>{});
+  db.collection("storefinds").onSnapshot(snap=>{ S.finds=snap.docs.map(x=>({id:x.id,...x.data()})); const h=document.getElementById("simhist"); if(h) h.innerHTML=findHistHtml(); compRefresh(); }, ()=>{});
   db.collection("docs").onSnapshot(snap=>{ S.docs=snap.docs.map(x=>({id:x.id,...x.data()})); render(); if(detailId) refreshDocs(detailId); }, ()=>{});
   db.doc("settings/defaults").onSnapshot(snap=>{ S.settings={...SET_DEFAULT,...(snap.exists?snap.data():{})}; render(); }, ()=>{});
   db.collection("ptypes").onSnapshot(snap=>{ const m=new Map(), ids=new Set(); snap.docs.forEach(d=>{ ids.add(d.id); const mp=d.data()?.map||{}; for(const k in mp) if(mp[k]&&mp[k].t) m.set(k,mp[k]); }); S.ptypes=m; S.ptypeDocs=ids; render(); }, ()=>{});
@@ -2910,6 +2985,7 @@ render();
     if(sample&&imgOK){ const b=document.createElement("button"); b.className="btn sm ghost"; b.textContent="Scan a stack"; b.onclick=openBulk; $(".brand").append(b); }
     if(sample){ const w=document.createElement("button"); w.className="btn sm ghost"; w.textContent="✎ Writing helper"; w.onclick=()=>openMessage(null); $(".brand").append(w); }
     const g=document.createElement("button"); g.className="btn sm ghost"; g.textContent="Settings"; g.onclick=openSettings; $(".brand").append(g);
+    if(sample&&imgOK&&assets&&db){ const cs=document.createElement("button"); cs.className="btn sm"; cs.id="compshop"; cs.textContent="🛒 Comp shop"; cs.onclick=()=>openCompShop(); $(".brand").append(cs); }
     if(sample){ const fs=document.createElement("button"); fs.className="btn sm"; fs.id="findsim"; fs.textContent="📷 Find similar"; fs.onclick=openFindSimilar; $(".brand").append(fs); }
     else if(assets&&db){ const fs=document.createElement("button"); fs.className="btn sm"; fs.id="findsim"; fs.textContent="📷 Find similar"; fs.onclick=()=>{ window.__dbPreset="find"; openDropBox(); }; $(".brand").append(fs); }
     if(sample&&assets&&db){ const dbx=document.createElement("button"); dbx.className="btn sm ghost"; dbx.id="dropbtn"; dbx.textContent="Send a file (read hourly)"; dbx.onclick=()=>openDropBox(); $(".brand").append(dbx); }
