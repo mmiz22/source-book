@@ -893,7 +893,8 @@ function similarPool(id){
   const seen=new Set(); return out.filter(r=>{ const k=r.s.id+"|"+normItem(r.l.item); if(seen.has(k)) return false; seen.add(k); return true; });
 }
 async function identifyProduct(img, text){
-  const ask=`Identify the product ${img?"in this photo taken in a retail store":"the shopper describes"} so a sourcing manager can find similar items in factory quotes.${text?` Shopper's note: "${text}".`:""}
+  const imgs=(Array.isArray(img)?img:(img?[img]:[])).slice(0,6); img=imgs[0]||null;
+  const ask=`Identify the product ${img?(imgs.length>1?`shown in these ${imgs.length} photos taken in a retail store (they are all the SAME product: front, back, sides, price tag; combine what you read from all of them)`:"in this photo taken in a retail store"):"the shopper describes"} so a sourcing manager can find similar items in factory quotes.${text?` Shopper's note: "${text}".`:""}
 Pick "type" from this list, using the exact text (use "Other" if nothing fits): ${JSON.stringify(ALL_TYPES)}
 The product may be on a shelf, hanging on a peg hook, or still in its retail package. Read everything printed that you can make out:
 - the brand and the product name or model number on the package or label;
@@ -901,8 +902,8 @@ The product may be on a shelf, hanging on a peg hook, or still in its retail pac
 - specs such as size, capacity, wattage, battery, material and piece count;
 - the shelf tag or price sticker under or above it (a peg-hook tag counts): the price, any sale or clearance price with the regular price, the unit price, and the retailer's item number or UPC if printed.
 Only report what you can actually read or clearly see. Do not guess specs or prices. If a price is unclear, leave it "".
-Reply with only JSON: {"name":"short generic product name","type":"","alt_types":["up to 2 other close types from the list"],"brand":"","model":"","package_text":"the main description and claims printed on the package, up to 40 words","features":["specs and features read or seen, e.g. 15W, foldable, LED, 3-in-1, 2-pack"],"keywords":["5-10 words a factory would use to describe it"],"price":"the price you would pay now, number only","regular_price":"number only if a sale or clearance price is shown, else empty","price_note":"e.g. clearance, 2 for $10, unit price, or empty","pack_count":"","item_number":"retailer item number or UPC if printed","retailer":"store name if visible on the tag","material":"","color":""}`;
-  return await sample.json(ask, img?{images:[img],modelTier:"default"}:{modelTier:"default"});
+Reply with only JSON: {"name":"short generic product name","type":"","alt_types":["up to 2 other close types from the list"],"brand":"","model":"","package_text":"the main description and claims printed on the package, up to 40 words","features":["specs and features read or seen, e.g. 15W, foldable, LED, 3-in-1, 2-pack"],"keywords":["5-10 words a factory would use to describe it"],"price":"the price you would pay now, number only","regular_price":"number only if a sale or clearance price is shown, else empty","price_note":"e.g. clearance, 2 for $10, unit price, or empty","pack_count":"","item_number":"retailer item number or UPC if printed","retailer":"store name if visible on the tag","material":"","color":"colour(s) of the product itself as seen or printed, e.g. matte black","colors_available":"other colours listed on the package or shelf, else empty","packaging":"type of retail packaging, e.g. colour box, window box, blister card, clamshell, hang tag, polybag, tube, peg-hook box; add finish or notable details if clear","description":"plain description of the product and what it does, from the package text, up to 60 words","key_points":["the 3-6 main selling points printed on the package, in the package's own words"]}`;
+  return await sample.json(ask, img?{images:imgs,modelTier:"default"}:{modelTier:"default"});
 }
 async function rankSimilar(id, cands, img){
   const list=cands.map((r,i)=>`${i+1}. ${String(r.l.item).replace(/\s+/g," ").slice(0,220)}${r.t?` [${r.t}]`:""}`).join("\n");
@@ -946,11 +947,14 @@ async function saveFind(findId, id, img, price, rp, good, text, store, trip){
   try{
     const ref=findId?db.doc("storefinds/"+findId):db.collection("storefinds").doc();
     const prev=findId?arr(S.finds).find(x=>x.id===findId):null;
-    let photo=prev?.photo||"";
-    if(!photo&&img&&assets){ try{ photo=(await assets.upload(await shrink(img,1200))).id; }catch(e){ photo=""; } }
+    const imgs=Array.isArray(img)?img:(img?[img]:[]);
+    let photos=arr(prev?.photos).length?arr(prev.photos).slice():(prev?.photo?[prev.photo]:[]);
+    if(assets){ for(const b of imgs){ if(b&&b.__saved) continue; try{ photos.push((await assets.upload(await shrink(b,1200))).id); if(b) b.__saved=true; }catch(e){} } }
+    const photo=photos[0]||"";
     const doc={ createdAt:prev?.createdAt||Date.now(), updatedAt:Date.now(), name:id.name||"", type:id.type||"", brand:id.brand||"", model:id.model||"",
       price:price||"", regularPrice:rp||"", priceNote:id.price_note||"", packageText:String(id.package_text||"").slice(0,300), features:arr(id.features).slice(0,12).map(String),
-      store:store||"", note:text||"", photo, ...(trip||prev?.trip?{trip:trip||prev.trip}:{}),
+      packaging:String(id.packaging||"").slice(0,160), color:String(id.color||"").slice(0,80), colorsAvailable:String(id.colors_available||"").slice(0,120), description:String(id.description||"").slice(0,500), keyPoints:arr(id.key_points).slice(0,8).map(String), material:String(id.material||"").slice(0,80), itemNumber:String(id.item_number||"").slice(0,40),
+      store:store||"", note:text||"", photo, photos, ...(trip||prev?.trip?{trip:trip||prev.trip}:{}),
       matches:arr(good).slice(0,12).map(x=>({supplierId:x.r.s.id, company:x.r.s.company||x.r.s.companyChinese||"", item:String(x.r.l.item||"").slice(0,200), price:x.r.l.price??"", currency:x.r.q.currency||"USD", incoterm:x.r.q.incoterm||"", moq:x.r.l.moq||"", date:x.r.q.date||"", score:x.score||0, landed:(()=>{ try{ const lc=landed(x.r.q,x.r.l); return lc?+lc.total.toFixed(3):""; }catch(e){ return ""; } })()})) };
     await ref.set(doc); return ref.id;
   }catch(e){ return findId; }
@@ -966,16 +970,20 @@ function compRowHtml(x){
     <div class="findwho"><b>${esc(x.name||x.type||"Product")}</b>${x.brand?` · ${esc(x.brand)}`:""}
       <div class="note">${retail?`Retail ${usd(retail)}${x.regularPrice&&+x.regularPrice>retail?` (regular ${usd(+x.regularPrice)})`:""}`:"No price read"}</div>
       <div class="note">${top?`Best: ${esc(top.company||"factory")} · ${esc(money(top.price,top.currency||"USD"))} ${esc(top.incoterm||"")}${lc!=null?` · landed ${usd(lc)}`:""}${mg!=null?` · <b>${Math.round(mg*100)}% margin</b>`:""}`:"No factory quoted this yet"}</div></div></summary>
-    ${x.packageText?`<div class="note">${esc(x.packageText)}</div>`:""}${arr(x.features).length?`<div class="note">${esc(arr(x.features).join(" · "))}</div>`:""}
+    ${arr(x.photos).length>1?`<div class="row">${arr(x.photos).map(ph=>`<img class="pimg" src="${esc(blobUrl(ph))}" alt="" loading="lazy">`).join("")}</div>`:""}
+    ${x.description?`<div class="note">${esc(x.description)}</div>`:(x.packageText?`<div class="note">${esc(x.packageText)}</div>`:"")}
+    ${arr(x.keyPoints).length?`<div class="note"><b>Key points:</b> ${esc(arr(x.keyPoints).join(" · "))}</div>`:""}
+    ${[x.packaging?`<b>Packaging:</b> ${esc(x.packaging)}`:"", x.color?`<b>Color:</b> ${esc(x.color)}${x.colorsAvailable?` (also ${esc(x.colorsAvailable)})`:""}`:"", x.material?`<b>Material:</b> ${esc(x.material)}`:"", x.model?`<b>Model:</b> ${esc(x.model)}`:"", x.itemNumber?`<b>Item #:</b> ${esc(x.itemNumber)}`:""].filter(Boolean).map(t=>`<div class="note">${t}</div>`).join("")}
+    ${arr(x.features).length?`<div class="note">${esc(arr(x.features).join(" · "))}</div>`:""}
     ${m.map(y=>`<div class="findmatch" data-findopen="${esc(y.supplierId||"")}" tabindex="0" role="button"><b>${esc(y.company||"Factory")}</b> ${y.score?`<span class="note">${Math.round(y.score)}% match</span>`:""}<div class="note">${esc(String(y.item||"").slice(0,140))}</div><div class="note">${esc([money(y.price,y.currency||"USD"), y.incoterm, y.landed!==""&&y.landed!=null?`landed ${usd(+y.landed)}`:"", y.moq?`MOQ ${y.moq}`:"", y.date].filter(Boolean).join(" · "))}</div></div>`).join("")}
-    <div class="row"><button class="btn sm ghost" data-finddel="${esc(x.id)}">Remove</button></div></details>`;
+    <div class="row"><label class="btn sm">＋ Add photos and re-read<input type="file" accept="image/*" multiple hidden data-findadd="${esc(x.id)}"></label><button class="btn sm ghost" data-finddel="${esc(x.id)}">Remove</button></div></details>`;
 }
 function compListHtml(trip){
   const items=arr(S.finds).filter(x=>x.trip===trip).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const wait=compQ.filter(j=>j.trip===trip);
   const withM=items.filter(x=>arr(x.matches).length).length;
   return `<div class="label">${items.length} product${items.length===1?"":"s"} this trip${items.length?` · ${withM} with a factory match`:""}${wait.length?` · ${wait.length} being read`:""}</div>`+
-    wait.map(j=>`<div class="findrow"><div class="note">${j.err?`Couldn't read this photo (${esc(j.err)}).`:"Reading photo…"}</div></div>`).join("")+items.map(compRowHtml).join("");
+    wait.map(j=>`<div class="findrow"><div class="note">${j.err?`Couldn't read this photo (${esc(j.err)}).`:`Reading ${j.imgs.length>1?j.imgs.length+" photos":"photo"}…`}</div></div>`).join("")+items.map(compRowHtml).join("");
 }
 function compRefresh(){ const el=document.getElementById("complist"); if(el) el.innerHTML=compListHtml(el.dataset.trip); const t=document.getElementById("comptrips"); if(t) t.innerHTML=compTripsHtml(t.dataset.cur); }
 function compTripsHtml(cur){ const ts=tripsOf().filter(t=>t.id!==cur); if(!ts.length) return "";
@@ -983,13 +991,16 @@ function compTripsHtml(cur){ const ts=tripsOf().filter(t=>t.id!==cur); if(!ts.le
 async function compRun(){
   if(compBusy) return; compBusy=true;
   try{ while(compQ.some(j=>!j.err)){ const j=compQ.find(x=>!x.err);
-      try{ let img=j.img, id; try{ id=await identifyProduct(img,""); }catch(e){ if(e?.code==="image_rejected"||e?.code==="prompt_too_large"){ img=await shrink(img,900); id=await identifyProduct(img,""); } else throw e; }
+      try{ let imgs=j.imgs.slice(), id;
+        if(j.findId){ const prev=arr(S.finds).find(x=>x.id===j.findId); const old=[]; for(const ph of (arr(prev?.photos).length?arr(prev.photos):(prev?.photo?[prev.photo]:[]))){ try{ const b=await (await fetch(blobUrl(ph))).blob(); b.__saved=true; old.push(b); }catch(e){} } imgs=old.concat(imgs); }
+        try{ id=await identifyProduct(imgs,""); }catch(e){ if(e?.code==="image_rejected"||e?.code==="prompt_too_large"){ const sm=[]; for(const b of imgs.slice(0,4)){ const t=await shrink(b,900); if(b.__saved) t.__saved=true; sm.push(t); } imgs=sm; id=await identifyProduct(imgs,""); } else throw e; }
+        const img=imgs[0];
         if(!id||!(id.name||id.type)) throw {code:"unreadable"};
         const tag=num(String(id.price||"").replace(/[^0-9.]/g,"")), price=tag&&tag>0?tag:null, rp=num(String(id.regular_price||"").replace(/[^0-9.]/g,""));
         const pool=similarPool(id).slice(0,40); let good=[];
         if(pool.length){ let ranked=null; try{ ranked=await rankSimilar(id,pool,img); }catch(e){ try{ ranked=await rankSimilar(id,pool,null); }catch(e2){ ranked=null; } }
           good=ranked?ranked.filter(x=>x.score>=50):pool.filter(r=>r.typeHit>=10).slice(0,8).map(r=>({r,score:0,why:""})); }
-        await saveFind(null,id,img,price,rp,good,"",j.store,j.trip);
+        await saveFind(j.findId||null,id,imgs,(price||(j.findId?(arr(S.finds).find(x=>x.id===j.findId)?.price||null):null)),rp,good,"",j.store,j.trip);
         compQ.splice(compQ.indexOf(j),1);
       }catch(e){ j.err=e?.code||"error"; }
       compRefresh(); } }
@@ -999,9 +1010,9 @@ async function compCsv(trip){
   const many=Array.isArray(trip), ids=many?trip:[trip];
   const items=arr(S.finds).filter(x=>ids.includes(x.trip)).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)); if(!items.length) return;
   const cp=(num(S.settings.customerPct)||55)/100;
-  const rows=[["Date","Store","Product","Brand","Model","Retail $","Regular $","Customer cost $","Best factory","Quoted","Terms","MOQ","Landed $","Margin %","Match %","Factories matched","Features"]];
+  const rows=[["Date","Store","Product","Brand","Model","Retail $","Regular $","Customer cost $","Best factory","Quoted","Terms","MOQ","Landed $","Margin %","Match %","Factories matched","Features","Description","Key points","Packaging","Color","Material","Item #","Photos"]];
   for(const x of items){ const t=arr(x.matches)[0], r=+x.price||0, cust=r?r*cp:0, lc=t&&t.landed!==""&&t.landed!=null?+t.landed:null;
-    rows.push([x.createdAt?new Date(x.createdAt).toLocaleDateString():"", x.store||"", x.name||x.type||"", x.brand||"", x.model||"", r||"", x.regularPrice||"", cust?cust.toFixed(2):"", t?.company||"", t?t.price:"", t?.incoterm||"", t?.moq||"", lc!=null?lc.toFixed(2):"", (cust&&lc!=null)?Math.round((cust-lc)/cust*100):"", t?.score?Math.round(t.score):"", new Set(arr(x.matches).map(m=>m.supplierId)).size||"", arr(x.features).join("; ")]); }
+    rows.push([x.createdAt?new Date(x.createdAt).toLocaleDateString():"", x.store||"", x.name||x.type||"", x.brand||"", x.model||"", r||"", x.regularPrice||"", cust?cust.toFixed(2):"", t?.company||"", t?t.price:"", t?.incoterm||"", t?.moq||"", lc!=null?lc.toFixed(2):"", (cust&&lc!=null)?Math.round((cust-lc)/cust*100):"", t?.score?Math.round(t.score):"", new Set(arr(x.matches).map(m=>m.supplierId)).size||"", arr(x.features).join("; "), x.description||x.packageText||"", arr(x.keyPoints).join("; "), x.packaging||"", [x.color,x.colorsAvailable].filter(Boolean).join("; also "), x.material||"", x.itemNumber||"", arr(x.photos).length||(x.photo?1:0)]); }
   const store=many&&ids.length>1?"all-stores":(items[0].store||"store").replace(/[^A-Za-z0-9]+/g,"-");
   try{ await downloads.save({filename:`comp-shop-${store}-${today()}.csv`, data:"\ufeff"+csv(rows)}); }catch(e){ if(e?.code&&e.code!=="declined"&&e.code!=="cancelled") toast("Report didn't save"); }
 }
@@ -1009,24 +1020,37 @@ function openCompShop(tripId){
   let trip=tripId||null; const ex=trip?tripsOf().find(t=>t.id===trip):null;
   const last=(()=>{ try{ return localStorage.getItem("sb-laststore")||""; }catch{ return ""; } })();
   openSheet("Comp shop",`
-    <div class="note">Walk the store and snap each product with its price tag in the shot. Keep shooting; Claude reads each photo in the background and lines it up against your factory quotes.</div>
+    <div class="note">For each product, take as many photos as you need (front, back of the package, price tag), then tap Next product. Claude reads the brand, description, key points, packaging and color from all the photos in the background and lines the product up against your factory quotes.</div>
     <div class="field"><label for="compstore">Store</label><input id="compstore" placeholder="e.g. Five Below, Walmart" value="${esc(ex?ex.store:last)}"></div>
-    <div class="row"><label class="btn primary simshot">📷 Snap products<input type="file" accept="image/*" id="compimg" multiple hidden></label>${downloads?`<button class="btn" id="compcsv">Trip report (CSV)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}${downloads?`<button class="btn ghost" id="compday">All stores today (CSV)</button>`:""}</div>
+    <div class="row"><label class="btn primary simshot">📷 Add photo<input type="file" accept="image/*" id="compimg" multiple hidden></label><button class="btn primary" id="compnext" disabled>✓ Next product</button></div>
+    <div id="comptray" class="row"></div>
+    <div class="row">${downloads?`<button class="btn" id="compcsv">Trip report (CSV)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}${downloads?`<button class="btn ghost" id="compday">All stores today (CSV)</button>`:""}</div>
     <div id="complist" class="stack" data-trip=""></div>
     <div id="comptrips" class="stack" data-cur=""></div>`, body=>{
-    const setTrip=t=>{ trip=t; $("#complist").dataset.trip=t||""; $("#comptrips").dataset.cur=t||""; compRefresh(); };
+    const setTrip=t=>{ trip=t; if($("#complist")){ $("#complist").dataset.trip=t||""; $("#comptrips").dataset.cur=t||""; } compRefresh(); };
     if(!trip){ const today0=new Date(); today0.setHours(0,0,0,0); const cur=tripsOf().find(t=>t.at>=today0.getTime()&&(t.store||"")===last); trip=cur?cur.id:null; }
     setTrip(trip);
-    const storeV=()=>{ const v=$("#compstore").value.trim(); try{ localStorage.setItem("sb-laststore",v); }catch{} return v; };
-    $("#compimg").addEventListener("change",async e=>{ const fs=[...e.target.files]; e.target.value=""; if(!fs.length) return;
+    let storeLast=$("#compstore").value.trim();
+    const storeV=()=>{ const el=$("#compstore"); if(el) storeLast=el.value.trim(); try{ localStorage.setItem("sb-laststore",storeLast); }catch{} return storeLast; };
+    $("#compstore").addEventListener("input",()=>{ storeLast=$("#compstore").value.trim(); });
+    let tray=[];
+    const drawTray=()=>{ if(!$("#comptray")) return; $("#comptray").innerHTML=tray.length?tray.map(b=>`<img class="pimg" src="${URL.createObjectURL(b)}" alt="">`).join("")+`<span class="note">${tray.length} photo${tray.length>1?"s":""} of this product. Add more, or tap Next product.</span>`:""; $("#compnext").disabled=!tray.length; };
+    const flush=()=>{ if(!tray.length) return; const imgs=tray; tray=[]; drawTray();
       const sv=storeV(), d0=new Date(); d0.setHours(0,0,0,0);
       const curT=trip?tripsOf().find(t=>t.id===trip):null, qStore=compQ.find(j=>j.trip===trip)?.store;
       const curStore=curT?curT.store:(qStore??null);
       if(!trip||(curStore!=null&&curStore.trim().toLowerCase()!==sv.toLowerCase())){
         const same=tripsOf().find(t=>t.at>=d0.getTime()&&(t.store||"").trim().toLowerCase()===sv.toLowerCase());
         setTrip(same?same.id:"trip-"+Date.now().toString(36)); if(curStore!=null) toast(same?`Back to today's ${sv||"store"} trip`:`New trip: ${sv||"store"}`); }
-      for(const f of fs){ try{ compQ.push({trip,store:sv,img:await shrink(f,2000)}); }catch(err){} }
-      compRefresh(); compRun(); });
+      compQ.push({trip,store:sv,imgs});
+      compRefresh(); compRun();
+    };
+    $("#compimg").addEventListener("change",async e=>{ const fs=[...e.target.files]; e.target.value=""; if(!fs.length) return;
+      for(const f of fs){ if(tray.length>=6){ toast("Six photos is the most for one product"); break; } try{ tray.push(await shrink(f,2000)); }catch(err){} } drawTray(); });
+    $("#compnext").onclick=flush; sheetClose=flush;
+    body.addEventListener("change",async e=>{ const inp=e.target.closest("[data-findadd]"); if(!inp) return; const fs=[...inp.files]; inp.value=""; if(!fs.length) return;
+      const x=arr(S.finds).find(y=>y.id===inp.dataset.findadd); if(!x) return; const imgs=[]; for(const f of fs.slice(0,5)){ try{ imgs.push(await shrink(f,2000)); }catch(err){} }
+      compQ.push({trip:x.trip,store:x.store||"",imgs,findId:x.id}); compRefresh(); compRun(); });
     const nb=$("#compnew"); if(nb) nb.onclick=()=>{ setTrip(null); toast("New trip. Snap the first product."); };
     const db2=$("#compday"); if(db2) db2.onclick=()=>{ const d0=new Date(); d0.setHours(0,0,0,0); const ids=tripsOf().filter(t=>t.at>=d0.getTime()).map(t=>t.id); if(ids.length) compCsv(ids); else toast("No products today yet"); };
     const cb=$("#compcsv"); if(cb) cb.onclick=()=>{ if(trip) compCsv(trip); else toast("No products in this trip yet"); };
