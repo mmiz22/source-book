@@ -492,7 +492,7 @@ function landed(q,l){
   if(q.incoterm==="DDP") return {fob,freight:0,duty:0,other:0,total:fob,pct:0,margin:mg(fob)};
   let freight=0;
   if(!["CIF","CFR"].includes(q.incoterm)){
-    const cc=pick(L.containerCost,S.settings.containerCost), u=num(l.unitsPerCtr)||num(S.settings.defaultUnits);
+    const cc=pick(L.containerCost,S.settings.containerCost), u=(n=>n&&n>=200?n:null)(num(l.unitsPerCtr))||num(S.settings.defaultUnits);
     freight=(cc!=null&&u)?cc/u:(pick(L.freightPerUnit,S.settings.freightPerUnit)??0);
   }
   const own=num(L.dutyPct)!=null||num(L.tariffPct)!=null;
