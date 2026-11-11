@@ -304,11 +304,11 @@ const ai = {
       content.push({ type: "image", source: { type: "base64", media_type: type, data: await blobB64(img) } });
     }
     content.push({ type: "text", text: String(prompt) + "\n\nAnswer with valid JSON only. No explanation and no code fences." });
+    const messages = [{ role: "user", content }];
+    const send = () => fetch(AI_API + "/v1/messages", { method: "POST", headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify(Object.assign({ model: AI_MODELS[opts.modelTier] || AI_MODELS.default, max_tokens: 16000, messages }, opts.webSearch ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }] } : {})) });
     let r;
-    try {
-      r = await fetch(AI_API + "/v1/messages", { method: "POST", headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-        body: JSON.stringify({ model: AI_MODELS[opts.modelTier] || AI_MODELS.default, max_tokens: 16000, messages: [{ role: "user", content }] }) });
-    } catch (e) { throw aiErr("network", "Couldn't reach Claude"); }
+    try { r = await send(); } catch (e) { throw aiErr("network", "Couldn't reach Claude"); }
     if (!r.ok) {
       let msg = ""; try { msg = (await r.json())?.error?.message || ""; } catch {}
       if (r.status === 401 || r.status === 403) throw aiErr("not_granted", msg || "The Claude API key was not accepted");
@@ -318,8 +318,17 @@ const ai = {
       if (r.status === 400 && /credit|billing|balance/i.test(msg)) throw aiErr("quota_exceeded", msg);
       throw aiErr("failed", msg || ("Claude error " + r.status));
     }
-    const j = await r.json();
-    const text = (j.content || []).filter(c => c.type === "text").map(c => c.text).join("");
+    let j = await r.json();
+    // A long web-search turn can pause: send the paused answer back unchanged to let it finish.
+    for (let n = 0; opts.webSearch && j.stop_reason === "pause_turn" && n < 3; n++) {
+      messages.push({ role: "assistant", content: j.content });
+      try { r = await send(); } catch (e) { throw aiErr("network", "Couldn't reach Claude"); }
+      if (!r.ok) throw aiErr("failed", "Claude error " + r.status);
+      j = await r.json();
+    }
+    let blocks = j.content || [];
+    if (opts.webSearch) { const last = blocks.map(c => c.type).lastIndexOf("web_search_tool_result"); if (last >= 0) blocks = blocks.slice(last + 1); }
+    const text = blocks.filter(c => c.type === "text").map(c => c.text).join("");
     return parseJson(text);
   }
 };
