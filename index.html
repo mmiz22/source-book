@@ -1966,7 +1966,7 @@ Write only the revised message, nothing else.`,b.dataset.redo+"…");
 const EXCELJS="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"; let exceljsP=null;
 function getExcelJS(){ if(!exceljsP) exceljsP=loadScript(EXCELJS).then(()=>window.ExcelJS).catch(e=>{ exceljsP=null; throw e; }); return exceljsP; }
 S.rfqs=[];
-const rfqsFor=id=>S.rfqs.filter(r=>r.supplierId===id).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+const rfqsFor=id=>S.rfqs.filter(r=>r.supplierId===id||arr(r.supplierIds).includes(id)).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
 function cropToBlob(canvas,r,max=700){
   const k=Math.min(1,max/Math.max(r.w,r.h)); const c=document.createElement("canvas"); c.width=Math.max(1,Math.round(r.w*k)); c.height=Math.max(1,Math.round(r.h*k));
   const g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height); g.drawImage(canvas,r.x,r.y,r.w,r.h,0,0,c.width,c.height);
@@ -1980,16 +1980,23 @@ Name the product and write a short spec description a buyer would put on an RFQ.
 Reply with only JSON: {"name":"short product name","model":"model number or empty","description":"one or two lines of key specs"}`,{images:[blob],modelTier:"default"});
   }catch(e){ return null; }
 }
-function openRfq(supplierId, existing){
-  const s=S.sup.get(supplierId); if(!s) return;
-  const R=existing?JSON.parse(JSON.stringify(stripMeta(existing))):{supplierId,title:`RFQ ${today()}`,qty:"10,000 pcs",due:"",notes:"",items:[]};
+function openRfq(supplierId, existing, draft){
+  const R=draft||(existing?JSON.parse(JSON.stringify(stripMeta(existing))):{supplierId:supplierId||null,title:`RFQ ${today()}`,qty:"10,000 pcs",due:"",notes:"",items:[]});
+  if(!Array.isArray(R.supplierIds)) R.supplierIds=R.supplierId?[R.supplierId]:[];
+  R.supplierIds=R.supplierIds.filter(x=>S.sup.has(x));
+  const ids=R.supplierIds, multi=ids.length>1;
+  const s=S.sup.get(ids.length===1?ids[0]:"")||{};
+  const supName=x=>{ const f=S.sup.get(x)||{}; return f.company||f.companyChinese||f.contactName||"Factory"; };
   const rid=existing?.id||null;
-  const cats=S.docs.filter(d=>d.supplierId===supplierId&&d.file&&!/\.(xlsx?|csv)$/i.test(d.name||"")).sort((a,b)=>(docTypeOf(a)==="Catalog"?0:1)-(docTypeOf(b)==="Catalog"?0:1));
-  const qlines=quotesFor(supplierId).flatMap(q=>arr(q.lines).filter(l=>l.img).map(l=>({l,q})));
-  const saved=rfqsFor(supplierId).filter(r=>r.id!==rid);
+  const cats=S.docs.filter(d=>ids.includes(d.supplierId)&&d.file&&!/\.(xlsx?|csv)$/i.test(d.name||"")).sort((a,b)=>(docTypeOf(a)==="Catalog"?0:1)-(docTypeOf(b)==="Catalog"?0:1));
+  const qlines=ids.flatMap(x=>quotesFor(x)).flatMap(q=>arr(q.lines).filter(l=>l.img).map(l=>({l,q}))).slice(0,200);
+  const saved=(supplierId?rfqsFor(supplierId):[...S.rfqs].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0))).filter(r=>r.id!==rid);
   openSheet(existing?"Edit RFQ":"Make an RFQ",`
-    <div class="note">${esc(s.company||s.companyChinese||"")}${s.contactName?` · ${esc(s.contactName)}`:""}</div>
-    ${saved.length&&!existing?`<div class="sec"><div class="label">Saved RFQs</div><div class="row">${saved.map(r=>`<button class="btn sm ghost" data-rfqopen="${esc(r.id)}">${esc(r.title||"RFQ")} · ${arr(r.items).length} items</button>`).join("")}</div></div>`:""}
+    <div class="sec"><div class="label">Send to factories (${ids.length})</div>
+      <div class="row" id="rq-fl">${ids.map(x=>`<span class="chip" style="display:inline-flex;gap:6px;align-items:center">${esc(supName(x).slice(0,34))}<button class="rm" data-rmf="${esc(x)}" aria-label="Remove ${esc(supName(x))}" style="padding:0 4px">✕</button></span>`).join("")||`<span class="note">No factories yet. Search below to add them.</span>`}</div>
+      <div class="field"><input id="rq-fs" placeholder="Add a factory: type a name, product or category" autocomplete="off"></div>
+      <div class="row" id="rq-fr"></div></div>
+    ${saved.length&&!existing?`<div class="sec"><div class="label">Saved RFQs</div><div class="row">${saved.map(r=>`<button class="btn sm ghost" data-rfqopen="${esc(r.id)}">${esc(r.title||"RFQ")} · ${arr(r.items).length} items${arr(r.supplierIds).length>1?` · ${r.supplierIds.length} factories`:""}</button>`).join("")}</div></div>`:""}
     <div class="grid2">
       <div class="field"><label class="label" for="rq-title">RFQ name</label><input id="rq-title" value="${esc(R.title||"")}"></div>
       <div class="field"><label class="label" for="rq-qty">Quote on quantity</label><input id="rq-qty" value="${esc(R.qty||"")}"></div>
@@ -1998,17 +2005,24 @@ function openRfq(supplierId, existing){
     <div class="field"><label class="label" for="rq-notes">Notes for the factory</label><textarea id="rq-notes" placeholder="Packaging, logo, colors, certifications…">${esc(R.notes||"")}</textarea></div>
     <div class="sec"><div class="label">Add products</div>
       <div class="row">
-        ${cats.length?`<select id="rq-cat" aria-label="Catalog">${cats.map(d=>`<option value="${esc(d.id)}">${esc(String(d.name||"File").slice(0,60))}</option>`).join("")}</select><button class="btn sm primary" id="rq-pick">Pick from catalog</button>`:`<span class="note">No catalogs saved for this factory yet. Add one under Files.</span>`}
+        ${cats.length?`<select id="rq-cat" aria-label="Catalog">${cats.map(d=>`<option value="${esc(d.id)}">${esc(String(d.name||"File").slice(0,60))}</option>`).join("")}</select><button class="btn sm primary" id="rq-pick">Pick from catalog</button>`:`<span class="note">${ids.length?"No catalogs saved for these factories yet.":"Add a factory to pick from its catalogs and quotes, or use the buttons here."}</span>`}
         ${qlines.length?`<button class="btn sm" id="rq-fromq">From their quotes (${qlines.length})</button>`:""}
         ${assets?`<label class="btn sm ghost">Upload photo<input type="file" id="rq-up" accept="image/*" multiple hidden></label>`:""}
         <button class="btn sm ghost" id="rq-blank">＋ Blank line</button>
       </div>
     </div>
     <div class="sec"><div class="label" id="rq-cnt">Items</div><div class="lines" id="rq-items"></div></div>
-    <div class="row"><button class="btn primary" id="rq-save">Save RFQ</button>${downloads?`<button class="btn" id="rq-xl">Download Excel RFQ</button>`:""}${sample?`<button class="btn ghost" id="rq-msg">Write message to send it</button>`:""}<button class="btn ghost" id="rq-back">Back to factory</button>${existing?`<button class="btn danger sm" id="rq-del">Delete</button>`:""}<span class="status" id="rq-st"></span></div>
+    <div class="row"><button class="btn primary" id="rq-save">Save RFQ</button>${downloads?`<button class="btn" id="rq-xl">Download Excel RFQ</button>`:""}${sample?`<button class="btn ghost" id="rq-msg">Write message to send it</button>`:""}<button class="btn ghost" id="rq-back">${supplierId?"Back to factory":"Close"}</button>${existing?`<button class="btn danger sm" id="rq-del">Delete</button>`:""}<span class="status" id="rq-st"></span></div>
     <div id="rq-conf"></div>`, body=>{
     const st=(t,c="")=>{ const e=body.querySelector("#rq-st"); e.textContent=t; e.className="status "+c; };
     const box=body.querySelector("#rq-items");
+    const reopen=()=>{ pull(); openRfq(supplierId,existing,R); };
+    body.querySelectorAll("[data-rmf]").forEach(b=>b.onclick=()=>{ R.supplierIds=R.supplierIds.filter(x=>x!==b.dataset.rmf); reopen(); });
+    const fs=body.querySelector("#rq-fs"), fr=body.querySelector("#rq-fr");
+    fs.oninput=()=>{ const w=fs.value.trim().toLowerCase().split(/\s+/).filter(Boolean); if(!w.length){ fr.innerHTML=""; return; }
+      const hit=[...S.sup.entries()].filter(([x,f])=>{ if(ids.includes(x)) return false; const h=[f.company,f.companyChinese,f.contactName,f.products,arr(f.categories).join(" "),f.city].join(" ").toLowerCase(); return w.every(t=>h.includes(t)); }).slice(0,10);
+      fr.innerHTML=hit.length?hit.map(([x,f])=>`<button class="btn sm ghost" data-addf="${esc(x)}" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">＋ ${esc(String(f.company||f.companyChinese||f.contactName||"Factory").slice(0,36))}${f.contactName&&f.company?` · ${esc(String(f.contactName).slice(0,16))}`:""}</button>`).join(""):`<span class="note">No factory matches.</span>`;
+      fr.querySelectorAll("[data-addf]").forEach(b=>b.onclick=()=>{ R.supplierIds.push(b.dataset.addf); reopen(); setTimeout(()=>$("#rq-fs")?.focus(),80); }); };
     const pull=()=>{ R.title=body.querySelector("#rq-title").value.trim(); R.qty=body.querySelector("#rq-qty").value.trim(); R.due=body.querySelector("#rq-due").value; R.notes=body.querySelector("#rq-notes").value.trim();
       box.querySelectorAll("[data-ri]").forEach(el=>{ const it=R.items[+el.dataset.ri]; if(!it) return; el.querySelectorAll("[data-k]").forEach(i=>it[i.dataset.k]=i.value); }); };
     const imgSrc=it=>it._pv||it.img||"";
@@ -2041,11 +2055,11 @@ function openRfq(supplierId, existing){
     const up=body.querySelector("#rq-up"); if(up) up.onchange=async e=>{ for(const f of e.target.files){ const b=await shrink(f,700); addCrop(b,"","upload"); } e.target.value=""; };
     body.querySelector("#rq-blank").onclick=()=>{ pull(); R.items.push({name:"",model:"",description:"",retail:""}); draw(); };
     body.querySelectorAll("[data-rfqopen]").forEach(b=>b.onclick=()=>openRfq(supplierId,S.rfqs.find(r=>r.id===b.dataset.rfqopen)));
-    body.querySelector("#rq-back").onclick=()=>{ closeSheet(); setTimeout(()=>openFactory(supplierId),30); };
+    body.querySelector("#rq-back").onclick=()=>{ closeSheet(); if(supplierId) setTimeout(()=>openFactory(supplierId),30); };
     async function persist(){
       pull();
       for(const it of R.items){ if(it._blob&&assets){ const u=await assets.upload(it._blob); it.img=blobUrl(u.id); } delete it._blob; delete it._pv; delete it._busy; }
-      const doc={...R,supplierId,updatedAt:Date.now()}; if(!rid) doc.createdAt=Date.now();
+      const doc={...R,supplierId:R.supplierIds[0]||null,updatedAt:Date.now()}; if(!rid) doc.createdAt=Date.now();
       const ref=rid?db.doc("rfqs/"+rid):db.collection("rfqs").doc(); await ref.set(doc); return ref.id||rid;
     }
     body.querySelector("#rq-save").onclick=async()=>{ const b=body.querySelector("#rq-save"); b.disabled=true; st("Saving…");
@@ -2053,15 +2067,19 @@ function openRfq(supplierId, existing){
       catch(e){ b.disabled=false; st(e?.code==="quota_exceeded"?"Photo storage is full. Free up space, or download the Excel without saving.":"Couldn't save ("+(e?.code||"error")+").","err"); } };
     const xl=body.querySelector("#rq-xl"); if(xl) xl.onclick=async()=>{ pull(); if(!R.items.length){ st("Add at least one product first.","err"); return; }
       xl.disabled=true; st("Building the Excel file…");
-      try{ const blob=await buildRfqXlsx(s,R); const fn=`RFQ ${String(s.company||"factory").replace(/[\\/:*?"<>|]+/g," ").slice(0,40)} ${R.title||today()}.xlsx`.replace(/\s+/g," ");
-        await downloads.save({filename:fn,data:blob}); st("Excel saved. Send it to the factory.","ok"); }
+      try{ const blob=await buildRfqXlsx(s,R); const fn=`RFQ ${String(s.company||"").replace(/[\\/:*?"<>|]+/g," ").slice(0,40)} ${String(R.title||today()).replace(/^RFQ\s+/i,ids.length===1?"RFQ ":"").replace(/[\\/:*?"<>|]+/g," ")}.xlsx`.replace(/\s+/g," ");
+        await downloads.save({filename:fn,data:blob}); st(multi?`Excel saved. The same file goes to all ${ids.length} factories.`:"Excel saved. Send it to the factory.","ok"); }
       catch(e){ if(e?.code==="declined"||e?.code==="cancelled") st(""); else st("Couldn't build the file ("+(e?.code||e?.message||"error")+").","err"); }
       finally{ xl.disabled=false; } };
     const mb=body.querySelector("#rq-msg"); if(mb) mb.onclick=()=>{ pull(); const list=R.items.map(it=>[it.name,it.model].filter(Boolean).join(" ")).filter(Boolean).slice(0,12).join("; ");
-      openMessage(supplierId); setTimeout(()=>{ const p=$("#m-purpose"); if(p) p.value="Request a quote"; const x=$("#m-extra"); if(x) x.value=`Sending our RFQ Excel file "${R.title}". Please fill in the blue RFQ tab: China FOB price (quote on ${R.qty||"10,000 pcs"}), packaging cost, FOB port, HTS code, unit dimensions and 40HQ quantity. Do not delete our items; suggest similar items on the Additional Items tab.${R.due?` Please reply by ${R.due}.`:""} Items: ${list}.${R.notes?` Notes: ${R.notes}`:""}`; },60); };
+      if(!ids.length){ st("Add at least one factory first.","err"); return; }
+      const go=fid=>{ openMessage(fid); setTimeout(()=>{ const p=$("#m-purpose"); if(p) p.value="Request a quote"; const x=$("#m-extra"); if(x) x.value=`Sending our RFQ Excel file "${R.title}". Please fill in the blue RFQ tab: China FOB price (quote on ${R.qty||"10,000 pcs"}), packaging cost, FOB port, HTS code, unit dimensions and 40HQ quantity. Do not delete our items; suggest similar items on the Additional Items tab.${R.due?` Please reply by ${R.due}.`:""} Items: ${list}.${R.notes?` Notes: ${R.notes}`:""}`; },60); };
+      if(!multi){ go(ids[0]); return; }
+      const c=body.querySelector("#rq-conf"); c.innerHTML=`<div class="qcard"><div class="label">Write the message for which factory?</div><div class="note">Save the RFQ first. Each message opens on its own; come back here from Make RFQ for the next one.</div><div class="row">${ids.map(x=>`<button class="btn sm ghost" data-msgf="${esc(x)}">${esc(supName(x).slice(0,34))}</button>`).join("")}</div></div>`;
+      c.querySelectorAll("[data-msgf]").forEach(b=>b.onclick=()=>go(b.dataset.msgf)); };
     const del=body.querySelector("#rq-del"); if(del) del.onclick=()=>{ const c=body.querySelector("#rq-conf");
       c.innerHTML=`<div class="confirm"><span>Delete this RFQ?</span><div class="row"><button class="btn danger sm" id="y">Delete RFQ</button><button class="btn sm" id="n">Keep</button></div></div>`;
-      c.querySelector("#n").onclick=()=>c.innerHTML=""; c.querySelector("#y").onclick=async()=>{ try{ await db.doc("rfqs/"+rid).delete(); closeSheet(); toast("RFQ deleted"); setTimeout(()=>openFactory(supplierId),50); }catch(e){ toast("Couldn't delete: "+(e.code||"error")); } }; };
+      c.querySelector("#n").onclick=()=>c.innerHTML=""; c.querySelector("#y").onclick=async()=>{ try{ await db.doc("rfqs/"+rid).delete(); closeSheet(); toast("RFQ deleted"); if(supplierId) setTimeout(()=>openFactory(supplierId),50); }catch(e){ toast("Couldn't delete: "+(e.code||"error")); } }; };
   });
 }
 // Full-screen catalog page browser with a "drag a box around the product" crop tool.
@@ -2121,7 +2139,7 @@ async function buildRfqXlsx(s,R){
   }
   const info=wb.addWorksheet("Instructions & Example");
   info.getColumn(1).width=120;
-  [["RFQ from "+[S.settings.signName,S.settings.signCompany].filter(Boolean).join(", ")],["To: "+[s.company,s.contactName].filter(Boolean).join(" · ")],["RFQ: "+(R.title||"")+(R.due?`   ·   Please reply by ${R.due}`:"")],["Quote on quantity: "+(R.qty||"10,000 pcs")],R.notes?["Notes: "+R.notes]:null,[""],
+  [["RFQ from "+[S.settings.signName,S.settings.signCompany].filter(Boolean).join(", ")],(s.company||s.contactName)?["To: "+[s.company,s.contactName].filter(Boolean).join(" · ")]:null,["RFQ: "+(R.title||"")+(R.due?`   ·   Please reply by ${R.due}`:"")],["Quote on quantity: "+(R.qty||"10,000 pcs")],R.notes?["Notes: "+R.notes]:null,[""],
    ["WHEN FILLING OUT THE RFQ USE THE TAB IN BLUE LABELED RFQ. MOST IMPORTANTLY - IF WE PLACED AN ITEM ON THE RFQ TO QUOTE, PLEASE DO NOT DELETE ANYTHING. IF YOU DO NOT HAVE AN ITEM, JUST SKIP IT AND ONLY QUOTE ON THE ITEMS YOU HAVE, OR ADD SIMILAR ITEMS ON THE ADDITIONAL ITEMS YOU RECOMMEND TAB."],
    ["Product image: paste the image into the sheet. Do not lock the image into the cell, otherwise we won't see it."],
    ["China Product FOB Cost: insert the China FOB price. Unless we specify otherwise, please quote based on 10K."],
@@ -3018,6 +3036,7 @@ render();
     if(sample&&imgOK){ const b=document.createElement("button"); b.className="btn sm ghost"; b.textContent="Scan a stack"; b.onclick=openBulk; $(".brand").append(b); }
     if(sample){ const w=document.createElement("button"); w.className="btn sm ghost"; w.textContent="✎ Writing helper"; w.onclick=()=>openMessage(null); $(".brand").append(w); }
     const g=document.createElement("button"); g.className="btn sm ghost"; g.textContent="Settings"; g.onclick=openSettings; $(".brand").append(g);
+    if(canWrite&&db){ const rb=document.createElement("button"); rb.className="btn sm"; rb.id="rfqnew"; rb.textContent="📝 Make RFQ"; rb.onclick=()=>openRfq(null); $(".brand").append(rb); }
     if(sample&&imgOK&&assets&&db){ const cs=document.createElement("button"); cs.className="btn sm"; cs.id="compshop"; cs.textContent="🛒 Comp shop"; cs.onclick=()=>openCompShop(); $(".brand").append(cs); }
     if(sample){ const fs=document.createElement("button"); fs.className="btn sm"; fs.id="findsim"; fs.textContent="📷 Find similar"; fs.onclick=openFindSimilar; $(".brand").append(fs); }
     else if(assets&&db){ const fs=document.createElement("button"); fs.className="btn sm"; fs.id="findsim"; fs.textContent="📷 Find similar"; fs.onclick=()=>{ window.__dbPreset="find"; openDropBox(); }; $(".brand").append(fs); }
