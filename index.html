@@ -1342,7 +1342,7 @@ function researchHtml(s){
   const btn = canResearch() ? `<button class="btn sm ${r?"":"primary"}" data-research ${st?"disabled":""}>${r?"Research again":"Research this factory"}</button>` : "";
   const head=`<div class="row" style="justify-content:space-between"><div class="label">What they make</div>${btn}</div>`;
   if (st) return head+`<div class="status">${esc(st)}</div>`;
-  if (!r) return head+`<div class="note">${canResearch()?"Claude searches the web for this factory, lists its products, and picks categories for it.":"Online research isn't available in this view."}</div>`;
+  if (!r) return head+`<div class="note">${canResearch()?"Claude searches the web for this factory, lists its products, and picks categories for it.":"Turn on Instant reading to research this factory online."}</div>`;
   const facts=[["Type",r.businessType],["Based in",r.location],["Since",r.founded],["Sells to",r.markets],["Certifications",arr(r.certifications).join(", ")]].filter(([,v])=>v);
   return head+`
     ${r.summary?`<div>${esc(r.summary)}</div>`:""}
@@ -1415,9 +1415,9 @@ Reply with only a JSON object:
     if(detailId===id) setTimeout(()=>openFactory(id),50);
   }catch(e){
     running.delete(id); refreshResearch(id);
-    const msg = e?.code==="not_granted"?"Research needs your OK to use Claude and SerpApi. Tap Research again and allow it."
+    const msg = e?.code==="not_granted"?"Research needs Instant reading turned on."
       : e?.code==="rate_limited"?"Too many requests right now. Try again in a minute."
-      : e?.code==="tool_error"||e?.code==="server_not_connected"?"The web search connection didn't answer. Check that SerpApi is connected, then try again."
+      : e?.code==="tool_error"||e?.code==="server_not_connected"?"The web search didn't answer. Try again in a minute."
       : "Research didn't finish. Try again.";
     toast(msg);
   }

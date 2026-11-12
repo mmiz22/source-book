@@ -132,6 +132,72 @@ async function loadAll() {
   for (const c of store.keys()) emit(c);
 }
 
+/* live updates: when the data repository gets a new commit (another device, the hourly reader, a Claude session),
+   re-read only the files that changed and refresh the screen. One tiny request per check. */
+let headSha = null, syncing = false, lastSync = 0;
+async function headNow() { const r = await gh(`/repos/${OWNER}/${REPO}/commits/${BRANCH}`, { headers: { Accept: "application/vnd.github.sha" } }); return (await r.text()).trim(); }
+async function syncNow() {
+  if (!loaded || syncing || document.hidden) return;
+  if (pending.size || [...saving.values()].some(Boolean)) return;
+  syncing = true; lastSync = Date.now();
+  try {
+    const h = await headNow();
+    if (headSha === null) { headSha = h; return; }
+    if (h === headSha) return;
+    const t = await (await gh(`/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`)).json();
+    const changed = [], seen = new Set();
+    for (const e of t.tree || []) {
+      if (e.type !== "blob") continue;
+      const isDb = e.path.startsWith("db/") && e.path.endsWith(".json");
+      if (isDb) { seen.add(e.path); if (shas.get(e.path) !== e.sha) changed.push(e); }
+      else shas.set(e.path, e.sha);
+    }
+    const touched = new Set();
+    for (const e of changed) {
+      if (pending.has(e.path) || saving.get(e.path)) continue;       // our own unsaved edits win; they merge on save
+      const obj = JSON.parse((await readBlob(e.sha)) || "{}");
+      const c = e.path.slice(3).split("/")[0].replace(/\.json$/, "");
+      const m = col(c);
+      for (const id of [...m.keys()]) if (fileFor(c, id) === e.path && !(id in obj)) { m.delete(id); touched.add(c + "\n" + id); }
+      for (const [id, d] of Object.entries(obj)) { const old = m.get(id); if (old === undefined || JSON.stringify(old) !== JSON.stringify(d)) { m.set(id, d); touched.add(c + "\n" + id); } }
+      shas.set(e.path, e.sha);
+    }
+    headSha = h;
+    const cols = new Set();
+    for (const k of touched) { const [c, id] = k.split("\n"); cols.add(c); (listeners.get(c + "/" + id) || []).forEach(cb => { try { cb(snapDoc(c, id)); } catch (e) { console.error(e); } }); }
+    for (const c of cols) emit(c);
+    if (cols.size) setStatus("Updated with the latest changes");
+  } catch (e) { /* offline or rate limited: try again next time */ }
+  finally { syncing = false; }
+}
+function startSync() {
+  headNow().then(h => { headSha = h; }).catch(() => {});
+  setInterval(() => { syncNow(); }, 60000);
+  const soon = () => { if (!document.hidden && Date.now() - lastSync > 15000) syncNow(); };
+  document.addEventListener("visibilitychange", soon); window.addEventListener("focus", soon);
+}
+
+/* who is signed in: the GitHub account behind the token */
+let who = null, canPush = true;
+const profileCache = new Map();
+const userNS = {
+  async id() { return who && who.login || null; },
+  async can(what) { return what === "data.write" ? canPush : true; },
+  async profiles(ids) {
+    const out = {};
+    for (const id of ids || []) {
+      if (!/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(id || "")) continue;
+      if (!profileCache.has(id)) { try { const j = await (await gh(`/users/${id}`)).json(); profileCache.set(id, { name: j.name || j.login }); } catch { profileCache.set(id, null); } }
+      if (profileCache.get(id)) out[id] = profileCache.get(id);
+    }
+    return out;
+  }
+};
+async function loadWho() {
+  try { const j = await (await gh(`/repos/${OWNER}/${REPO}`)).json(); if (j.permissions && j.permissions.push === false) canPush = false; } catch {}
+  try { const j = await (await gh(`/user`)).json(); if (j && j.login) { who = { login: j.login, name: j.name || j.login }; profileCache.set(j.login, { name: who.name }); } } catch {}
+}
+
 /* writes: batch per file, merge with the latest copy on GitHub, retry on conflict */
 const saving = new Map();
 function queueWrite(c, id, data) {
@@ -267,7 +333,8 @@ const started = (async () => {
     catch (e) { if (e.status === 401 || e.status === 404) { try { localStorage.removeItem(TOKEN_KEY); } catch {} token = null; await signInScreen("Your saved sign-in stopped working. Sign in again."); } }
   }
   await setupSW();
-  await loadAll();
+  await Promise.all([loadAll(), loadWho()]);
+  startSync();
   // sign-out link
   const so = document.createElement("span"); so.id = "gh-signout"; so.textContent = "Sign out";
   so.onclick = async () => { try { localStorage.removeItem(TOKEN_KEY); } catch {} try { await caches.delete("sb-auth"); } catch {} location.reload(); };
@@ -293,8 +360,10 @@ function parseJson(t) {
   throw aiErr("unreadable", "Claude's answer wasn't valid JSON");
 }
 const ai = {
-  async limits() { return { images: { maxCount: 8, maxBytes: 4500000 }, tools: false }; },
+  async limits() { return { images: { maxCount: 8, maxBytes: 4500000 }, tools: true }; },
   async json(prompt, opts = {}) {
+    // The Claude version searched through a connector tool; here Claude's own web search does the same job.
+    if (Array.isArray(opts.tools) && opts.tools.some(t => t && t.name === "web_search")) opts = Object.assign({}, opts, { webSearch: true });
     const key = aiKey(); if (!key) throw aiErr("not_granted", "No Claude API key on this device");
     const content = [];
     for (const img of (opts.images || [])) {
@@ -366,6 +435,8 @@ window.claude = {
     if (name === "assets") return started.then(() => assets);
     if (name === "downloads") return Promise.resolve(downloads);
     if (name === "sample") return started.then(() => { if (aiKey()) return ai; throw new Error("sample needs a Claude API key"); });
+    if (name === "user") return started.then(() => userNS);
+    if (name === "mcp") return started.then(() => { if (aiKey()) return { async callTool() { const e = new Error("not used"); e.code = "tool_error"; throw e; } }; throw new Error("research needs a Claude API key"); });
     return Promise.reject(new Error(name + " is not available in the GitHub version"));
   }
 };
