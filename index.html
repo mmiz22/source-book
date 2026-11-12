@@ -1252,7 +1252,7 @@ function openFactory(id){
     <div class="tags">${srcBadges(s)}${arr(s.categories).map(c=>`<span class="tag">${esc(c)}</span>`).join("")||`<span class="note">No category yet</span>`}${arr(s.projects).map(p=>`<span class="tag proj">${esc(p)}</span>`).join("")}${s.rating?`<span class="stars">${stars(s.rating)}</span>`:""}</div>
     ${s.followUp?`<div class="followbox ${followState(s)?.cls||""}"><div><strong>${esc(followState(s)?.txt||"")}</strong>${s.followNote?`<div>${esc(s.followNote)}</div>`:""}</div>${canWrite?`<div class="row"><button class="btn sm" id="fu-done">Done</button><button class="btn sm ghost" id="fu-week">+1 week</button></div>`:""}</div>`:""}
     ${replyBox(s)}
-    <div class="row"><button class="btn sm" id="qrc">Save to phone contacts</button>${canWrite?`<button class="btn sm" id="rfqb">Make RFQ${rfqsFor(id).length?` · ${rfqsFor(id).length} saved`:""}</button>`:""}${sample?`<button class="btn sm" id="msg">Write a message</button>`:""}${canWrite&&!s.followUp?`<button class="btn sm ghost" id="fu-set">Set follow-up</button>`:""}</div>
+    <div class="row"><button class="btn sm" id="qrc">Save to phone contacts</button>${canWrite?`<button class="btn sm" id="rfqb">Make RFQ${rfqsFor(id).filter(r=>r.kind!=="sample").length?` · ${rfqsFor(id).filter(r=>r.kind!=="sample").length} saved`:""}</button><button class="btn sm" id="smpb">Sample request${rfqsFor(id).filter(r=>r.kind==="sample").length?` · ${rfqsFor(id).filter(r=>r.kind==="sample").length} saved`:""}</button>`:""}${sample?`<button class="btn sm" id="msg">Write a message</button>`:""}${canWrite&&!s.followUp?`<button class="btn sm ghost" id="fu-set">Set follow-up</button>`:""}</div>
     ${chatLinks(s)}
     <dl class="kv">${kv.map(([k,v])=>`<dt>${k}</dt><dd>${arr(v).map(x=>`<span>${k==="Notes"?htsLinks(esc(x)):esc(x)}</span>${["Phone","Email","WeChat","WhatsApp"].includes(k)?`<button class="copy" data-copy="${esc(x)}">Copy</button>`:""}`).join("<br>")}</dd>`).join("")}</dl>
     ${cardSection(s)}
@@ -1291,7 +1291,7 @@ function openFactory(id){
     wireDocs(body,id);
     wireCards(body,s);
     const mb=body.querySelector("#msg"); if(mb) mb.onclick=()=>openMessage(id);
-    const rb=body.querySelector("#rfqb"); if(rb) rb.onclick=()=>openRfq(id);
+    const rb=body.querySelector("#rfqb"); if(rb) rb.onclick=()=>openRfq(id); const sb2=body.querySelector("#smpb"); if(sb2) sb2.onclick=()=>openRfq(id,null,null,"sample");
     body.querySelector("#qrc")?.addEventListener("click",()=>openContactQR(id));
     body.querySelectorAll("[data-rdo]").forEach(b=>b.onclick=async()=>{ await setReply(id,b.dataset.rdo); setTimeout(()=>{ if(detailId===id) openFactory(id); },60); });
     body.querySelectorAll("[data-rdraft]").forEach(b=>b.onclick=()=>openMessage(id));
@@ -2049,8 +2049,9 @@ Name the product and write a short spec description a buyer would put on an RFQ.
 Reply with only JSON: {"name":"short product name","model":"model number or empty","description":"one or two lines of key specs"}`,{images:[blob],modelTier:"default"});
   }catch(e){ return null; }
 }
-function openRfq(supplierId, existing, draft){
-  const R=draft||(existing?JSON.parse(JSON.stringify(stripMeta(existing))):{supplierId:supplierId||null,title:`RFQ ${today()}`,qty:"10,000 pcs",due:"",notes:"",items:[]});
+function openRfq(supplierId, existing, draft, kind){
+  const R=draft||(existing?JSON.parse(JSON.stringify(stripMeta(existing))):(kind==="sample"?{kind:"sample",supplierId:supplierId||null,title:`Sample request ${today()}`,qty:"2",due:"",notes:"",shipTo:S.settings.sampleAddress||[S.settings.signName,S.settings.signCompany,MY_ADDRESS].filter(Boolean).join(", "),courier:"",items:[]}:{supplierId:supplierId||null,title:`RFQ ${today()}`,qty:"10,000 pcs",due:"",notes:"",items:[]}));
+  const isS=R.kind==="sample", W=isS?"sample request":"RFQ", Wc=isS?"Sample request":"RFQ";
   if(!Array.isArray(R.supplierIds)) R.supplierIds=R.supplierId?[R.supplierId]:[];
   R.supplierIds=R.supplierIds.filter(x=>S.sup.has(x));
   const ids=R.supplierIds, multi=ids.length>1;
@@ -2059,19 +2060,21 @@ function openRfq(supplierId, existing, draft){
   const rid=existing?.id||null;
   const cats=S.docs.filter(d=>ids.includes(d.supplierId)&&d.file&&!/\.(xlsx?|csv)$/i.test(d.name||"")).sort((a,b)=>(docTypeOf(a)==="Catalog"?0:1)-(docTypeOf(b)==="Catalog"?0:1));
   const qlines=ids.flatMap(x=>quotesFor(x)).flatMap(q=>arr(q.lines).filter(l=>l.img).map(l=>({l,q}))).slice(0,200);
-  const saved=(supplierId?rfqsFor(supplierId):[...S.rfqs].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0))).filter(r=>r.id!==rid);
-  openSheet(existing?"Edit RFQ":"Make an RFQ",`
+  const saved=(supplierId?rfqsFor(supplierId):[...S.rfqs].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0))).filter(r=>r.id!==rid&&(r.kind==="sample")===isS);
+  openSheet(existing?`Edit ${W}`:(isS?"Request samples":"Make an RFQ"),`
     <div class="sec"><div class="label">Send to factories (${ids.length})</div>
       <div class="row" id="rq-fl">${ids.map(x=>`<span class="chip" style="display:inline-flex;gap:6px;align-items:center">${esc(supName(x).slice(0,34))}<button class="rm" data-rmf="${esc(x)}" aria-label="Remove ${esc(supName(x))}" style="padding:0 4px">✕</button></span>`).join("")||`<span class="note">No factories yet. Search below to add them.</span>`}</div>
       <div class="field"><input id="rq-fs" placeholder="Add a factory: type a name, product or category" autocomplete="off"></div>
       <div class="row" id="rq-fr"></div></div>
-    ${saved.length&&!existing?`<div class="sec"><div class="label">Saved RFQs</div><div class="row">${saved.map(r=>`<button class="btn sm ghost" data-rfqopen="${esc(r.id)}">${esc(r.title||"RFQ")} · ${arr(r.items).length} items${arr(r.supplierIds).length>1?` · ${r.supplierIds.length} factories`:""}</button>`).join("")}</div></div>`:""}
+    ${saved.length&&!existing?`<div class="sec"><div class="label">Saved ${isS?"sample requests":"RFQs"}</div><div class="row">${saved.map(r=>`<button class="btn sm ghost" data-rfqopen="${esc(r.id)}">${esc(r.title||Wc)} · ${arr(r.items).length} items${arr(r.supplierIds).length>1?` · ${r.supplierIds.length} factories`:""}</button>`).join("")}</div></div>`:""}
     <div class="grid2">
-      <div class="field"><label class="label" for="rq-title">RFQ name</label><input id="rq-title" value="${esc(R.title||"")}"></div>
-      <div class="field"><label class="label" for="rq-qty">Quote on quantity</label><input id="rq-qty" value="${esc(R.qty||"")}"></div>
-      <div class="field"><label class="label" for="rq-due">Quote needed by</label><input type="date" id="rq-due" value="${esc(R.due||"")}"></div>
+      <div class="field"><label class="label" for="rq-title">${isS?"Request name":"RFQ name"}</label><input id="rq-title" value="${esc(R.title||"")}"></div>
+      <div class="field"><label class="label" for="rq-qty">${isS?"Samples per item":"Quote on quantity"}</label><input id="rq-qty" value="${esc(R.qty||"")}"></div>
+      <div class="field"><label class="label" for="rq-due">${isS?"Samples needed by":"Quote needed by"}</label><input type="date" id="rq-due" value="${esc(R.due||"")}"></div>
     </div>
-    <div class="field"><label class="label" for="rq-notes">Notes for the factory</label><textarea id="rq-notes" placeholder="Packaging, logo, colors, certifications…">${esc(R.notes||"")}</textarea></div>
+    ${isS?`<div class="field"><label class="label" for="rq-ship">Ship samples to</label><input id="rq-ship" value="${esc(R.shipTo||"")}"></div>
+    <div class="field"><label class="label" for="rq-courier">Courier account (optional)</label><input id="rq-courier" value="${esc(R.courier||"")}" placeholder="e.g. FedEx or DHL account number, or leave blank for prepaid"></div>`:""}
+    <div class="field"><label class="label" for="rq-notes">Notes for the factory</label><textarea id="rq-notes" placeholder="${isS?"Colors, packaging on the samples, labels, who pays freight…":"Packaging, logo, colors, certifications…"}">${esc(R.notes||"")}</textarea></div>
     <div class="sec"><div class="label">Add products</div>
       <div class="row">
         ${cats.length?`<select id="rq-cat" aria-label="Catalog">${cats.map(d=>`<option value="${esc(d.id)}">${esc(String(d.name||"File").slice(0,60))}</option>`).join("")}</select><button class="btn sm primary" id="rq-pick">Pick from catalog</button>`:`<span class="note">${ids.length?"No catalogs saved for these factories yet.":"Add a factory to pick from its catalogs and quotes, or use the buttons here."}</span>`}
@@ -2081,7 +2084,7 @@ function openRfq(supplierId, existing, draft){
       </div>
     </div>
     <div class="sec"><div class="label" id="rq-cnt">Items</div><div class="lines" id="rq-items"></div></div>
-    <div class="row"><button class="btn primary" id="rq-save">Save RFQ</button>${downloads?`<button class="btn" id="rq-xl">Download Excel RFQ</button>`:""}${sample?`<button class="btn ghost" id="rq-msg">Write message to send it</button>`:""}<button class="btn ghost" id="rq-back">${supplierId?"Back to factory":"Close"}</button>${existing?`<button class="btn danger sm" id="rq-del">Delete</button>`:""}<span class="status" id="rq-st"></span></div>
+    <div class="row"><button class="btn primary" id="rq-save">Save ${W}</button>${downloads?`<button class="btn" id="rq-xl">${isS?"Download Excel sample form":"Download Excel RFQ"}</button>`:""}${sample?`<button class="btn ghost" id="rq-msg">Write message to send it</button>`:""}<button class="btn ghost" id="rq-back">${supplierId?"Back to factory":"Close"}</button>${existing?`<button class="btn danger sm" id="rq-del">Delete</button>`:""}<span class="status" id="rq-st"></span></div>
     <div id="rq-conf"></div>`, body=>{
     const st=(t,c="")=>{ const e=body.querySelector("#rq-st"); e.textContent=t; e.className="status "+c; };
     const box=body.querySelector("#rq-items");
@@ -2093,6 +2096,7 @@ function openRfq(supplierId, existing, draft){
       fr.innerHTML=hit.length?hit.map(([x,f])=>`<button class="btn sm ghost" data-addf="${esc(x)}" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">＋ ${esc(String(f.company||f.companyChinese||f.contactName||"Factory").slice(0,36))}${f.contactName&&f.company?` · ${esc(String(f.contactName).slice(0,16))}`:""}</button>`).join(""):`<span class="note">No factory matches.</span>`;
       fr.querySelectorAll("[data-addf]").forEach(b=>b.onclick=()=>{ R.supplierIds.push(b.dataset.addf); reopen(); setTimeout(()=>$("#rq-fs")?.focus(),80); }); };
     const pull=()=>{ R.title=body.querySelector("#rq-title").value.trim(); R.qty=body.querySelector("#rq-qty").value.trim(); R.due=body.querySelector("#rq-due").value; R.notes=body.querySelector("#rq-notes").value.trim();
+      if(isS){ R.shipTo=body.querySelector("#rq-ship").value.trim(); R.courier=body.querySelector("#rq-courier").value.trim(); }
       box.querySelectorAll("[data-ri]").forEach(el=>{ const it=R.items[+el.dataset.ri]; if(!it) return; el.querySelectorAll("[data-k]").forEach(i=>it[i.dataset.k]=i.value); }); };
     const imgSrc=it=>it._pv||it.img||"";
     function draw(){
@@ -2102,7 +2106,8 @@ function openRfq(supplierId, existing, draft){
         <div class="f-item"><label>Product name</label><input data-k="name" value="${esc(it.name||"")}"></div>
         <div><label>Model</label><input data-k="model" value="${esc(it.model||"")}"></div>
         <div class="f-item"><label>Description / specs</label><input data-k="description" value="${esc(it.description||"")}"></div>
-        <div><label>Ref. retail $</label><input data-k="retail" inputmode="decimal" value="${esc(it.retail||"")}"></div>
+        ${isS?`<div><label>Sample qty</label><input data-k="qty" inputmode="numeric" value="${esc(it.qty||"")}" placeholder="${esc(R.qty||"2")}"></div>
+        <div class="f-item"><label>Color / version</label><input data-k="color" value="${esc(it.color||"")}"></div>`:`<div><label>Ref. retail $</label><input data-k="retail" inputmode="decimal" value="${esc(it.retail||"")}"></div>`}
         <div style="grid-column:2/-1;display:flex;gap:6px;justify-content:flex-end">${it._busy?`<span class="note">Reading the picture…</span>`:""}<button class="rm" data-rmi="${i}">Remove</button></div>
       </div>`).join(""):`<div class="note">No products yet. Pick them from a catalog, their quotes, or upload photos.</div>`;
       box.querySelectorAll("[data-rmi]").forEach(b=>b.onclick=()=>{ pull(); R.items.splice(+b.dataset.rmi,1); draw(); });
@@ -2124,6 +2129,7 @@ function openRfq(supplierId, existing, draft){
     const up=body.querySelector("#rq-up"); if(up) up.onchange=async e=>{ for(const f of e.target.files){ const b=await shrink(f,700); addCrop(b,"","upload"); } e.target.value=""; };
     body.querySelector("#rq-blank").onclick=()=>{ pull(); R.items.push({name:"",model:"",description:"",retail:""}); draw(); };
     body.querySelectorAll("[data-rfqopen]").forEach(b=>b.onclick=()=>openRfq(supplierId,S.rfqs.find(r=>r.id===b.dataset.rfqopen)));
+    if(isS&&!existing&&!draft){ const qb=body.querySelector("#rq-qty"); qb.onchange=()=>{ pull(); draw(); }; }
     body.querySelector("#rq-back").onclick=()=>{ closeSheet(); if(supplierId) setTimeout(()=>openFactory(supplierId),30); };
     async function persist(){
       pull();
@@ -2132,23 +2138,23 @@ function openRfq(supplierId, existing, draft){
       const ref=rid?db.doc("rfqs/"+rid):db.collection("rfqs").doc(); await ref.set(doc); return ref.id||rid;
     }
     body.querySelector("#rq-save").onclick=async()=>{ const b=body.querySelector("#rq-save"); b.disabled=true; st("Saving…");
-      try{ const id=await persist(); st("Saved","ok"); toast("RFQ saved"); setTimeout(()=>openRfq(supplierId,S.rfqs.find(r=>r.id===id)||{...R,id}),400); }
+      try{ const id=await persist(); st("Saved","ok"); toast(`${Wc} saved`); setTimeout(()=>openRfq(supplierId,S.rfqs.find(r=>r.id===id)||{...R,id}),400); }
       catch(e){ b.disabled=false; st(e?.code==="quota_exceeded"?"Photo storage is full. Free up space, or download the Excel without saving.":"Couldn't save ("+(e?.code||"error")+").","err"); } };
     const xl=body.querySelector("#rq-xl"); if(xl) xl.onclick=async()=>{ pull(); if(!R.items.length){ st("Add at least one product first.","err"); return; }
       xl.disabled=true; st("Building the Excel file…");
-      try{ const blob=await buildRfqXlsx(s,R); const fn=`RFQ ${String(s.company||"").replace(/[\\/:*?"<>|]+/g," ").slice(0,40)} ${String(R.title||today()).replace(/^RFQ\s+/i,ids.length===1?"RFQ ":"").replace(/[\\/:*?"<>|]+/g," ")}.xlsx`.replace(/\s+/g," ");
+      try{ const blob=isS?await buildSampleXlsx(s,R):await buildRfqXlsx(s,R); const fn=isS?`Sample request ${String(s.company||"").replace(/[\\/:*?"<>|]+/g," ").slice(0,40)} ${String(R.title||today()).replace(/^Sample request\s+/i,"").replace(/[\\/:*?"<>|]+/g," ")}.xlsx`.replace(/\s+/g," "):`RFQ ${String(s.company||"").replace(/[\\/:*?"<>|]+/g," ").slice(0,40)} ${String(R.title||today()).replace(/^RFQ\s+/i,ids.length===1?"RFQ ":"").replace(/[\\/:*?"<>|]+/g," ")}.xlsx`.replace(/\s+/g," ");
         await downloads.save({filename:fn,data:blob}); st(multi?`Excel saved. The same file goes to all ${ids.length} factories.`:"Excel saved. Send it to the factory.","ok"); }
       catch(e){ if(e?.code==="declined"||e?.code==="cancelled") st(""); else st("Couldn't build the file ("+(e?.code||e?.message||"error")+").","err"); }
       finally{ xl.disabled=false; } };
     const mb=body.querySelector("#rq-msg"); if(mb) mb.onclick=()=>{ pull(); const list=R.items.map(it=>[it.name,it.model].filter(Boolean).join(" ")).filter(Boolean).slice(0,12).join("; ");
       if(!ids.length){ st("Add at least one factory first.","err"); return; }
-      const go=fid=>{ openMessage(fid); setTimeout(()=>{ const p=$("#m-purpose"); if(p) p.value="Request a quote"; const x=$("#m-extra"); if(x) x.value=`Sending our RFQ Excel file "${R.title}". Please fill in the blue RFQ tab: China FOB price (quote on ${R.qty||"10,000 pcs"}), packaging cost, FOB port, HTS code, unit dimensions and 40HQ quantity. Do not delete our items; suggest similar items on the Additional Items tab.${R.due?` Please reply by ${R.due}.`:""} Items: ${list}.${R.notes?` Notes: ${R.notes}`:""}`; },60); };
+      const go=fid=>{ openMessage(fid); setTimeout(()=>{ const p=$("#m-purpose"); if(p) p.value=isS?"Ask for samples":"Request a quote"; const x=$("#m-extra"); if(x) x.value=isS?`Sending our sample request form "${R.title}". Please send ${R.qty||"2"} pcs of each item unless the form says otherwise${R.due?`, to arrive by ${R.due}`:""}. Ship to: ${R.shipTo||""}.${R.courier?` Use our courier account: ${R.courier}.`:""} Please fill in the yellow columns (sample cost, ready date, tracking number), mark each sample with the model number, and include a copy of the form in the box. Items: ${list}.${R.notes?` Notes: ${R.notes}`:""}`:`Sending our RFQ Excel file "${R.title}". Please fill in the blue RFQ tab: China FOB price (quote on ${R.qty||"10,000 pcs"}), packaging cost, FOB port, HTS code, unit dimensions and 40HQ quantity. Do not delete our items; suggest similar items on the Additional Items tab.${R.due?` Please reply by ${R.due}.`:""} Items: ${list}.${R.notes?` Notes: ${R.notes}`:""}`; },60); };
       if(!multi){ go(ids[0]); return; }
-      const c=body.querySelector("#rq-conf"); c.innerHTML=`<div class="qcard"><div class="label">Write the message for which factory?</div><div class="note">Save the RFQ first. Each message opens on its own; come back here from Make RFQ for the next one.</div><div class="row">${ids.map(x=>`<button class="btn sm ghost" data-msgf="${esc(x)}">${esc(supName(x).slice(0,34))}</button>`).join("")}</div></div>`;
+      const c=body.querySelector("#rq-conf"); c.innerHTML=`<div class="qcard"><div class="label">Write the message for which factory?</div><div class="note">Save it first. Each message opens on its own; come back here for the next one.</div><div class="row">${ids.map(x=>`<button class="btn sm ghost" data-msgf="${esc(x)}">${esc(supName(x).slice(0,34))}</button>`).join("")}</div></div>`;
       c.querySelectorAll("[data-msgf]").forEach(b=>b.onclick=()=>go(b.dataset.msgf)); };
     const del=body.querySelector("#rq-del"); if(del) del.onclick=()=>{ const c=body.querySelector("#rq-conf");
-      c.innerHTML=`<div class="confirm"><span>Delete this RFQ?</span><div class="row"><button class="btn danger sm" id="y">Delete RFQ</button><button class="btn sm" id="n">Keep</button></div></div>`;
-      c.querySelector("#n").onclick=()=>c.innerHTML=""; c.querySelector("#y").onclick=async()=>{ try{ await db.doc("rfqs/"+rid).delete(); closeSheet(); toast("RFQ deleted"); if(supplierId) setTimeout(()=>openFactory(supplierId),50); }catch(e){ toast("Couldn't delete: "+(e.code||"error")); } }; };
+      c.innerHTML=`<div class="confirm"><span>Delete this ${W}?</span><div class="row"><button class="btn danger sm" id="y">Delete</button><button class="btn sm" id="n">Keep</button></div></div>`;
+      c.querySelector("#n").onclick=()=>c.innerHTML=""; c.querySelector("#y").onclick=async()=>{ try{ await db.doc("rfqs/"+rid).delete(); closeSheet(); toast(`${Wc} deleted`); if(supplierId) setTimeout(()=>openFactory(supplierId),50); }catch(e){ toast("Couldn't delete: "+(e.code||"error")); } }; };
   });
 }
 // Full-screen catalog page browser with a "drag a box around the product" crop tool.
@@ -2167,7 +2173,7 @@ async function openCatalogPicker(d,onCrop){
     const L=await getPdfjs(); const pdf=await L.getDocument({data:new Uint8Array(await blob.arrayBuffer()),isEvalSupported:false}).promise; if(tok!==viewTok) return;
     const W=Math.min(body.clientWidth-8,1000), dpr=Math.min(window.devicePixelRatio||1,2);
     const p1=(await pdf.getPage(1)).getViewport({scale:1}); const H=W*p1.height/p1.width;
-    body.replaceChildren(); const note=document.createElement("div"); note.className="note"; note.textContent=`${pdf.numPages} pages. Tap “Select a product”, then drag a box around each product you want on the RFQ.`; body.append(note);
+    body.replaceChildren(); const note=document.createElement("div"); note.className="note"; note.textContent=`${pdf.numPages} pages. Tap “Select a product”, then drag a box around each product you want.`; body.append(note);
     const io=new IntersectionObserver(es=>es.forEach(async e=>{ if(!e.isIntersecting) return; const c=e.target.querySelector("canvas"); io.unobserve(e.target);
       try{ const page=await pdf.getPage(+c.dataset.p); const v0=page.getViewport({scale:1}); const v=page.getViewport({scale:Math.max(W/v0.width*dpr,1.6)}); c.width=v.width; c.height=v.height; c.style.height=(W*v.height/v.width)+"px"; await page.render({canvasContext:c.getContext("2d"),viewport:v}).promise; c._page=page; c._vp=v; c._ready=true; }catch(err){} }),{root:body,rootMargin:"1200px 0px"});
     for(let i=1;i<=pdf.numPages;i++){ const c=document.createElement("canvas"); c.dataset.p=i; c.style.width=W+"px"; c.style.height=H+"px"; const w=wrap(c,async rect=>{ try{ if(!c._page) return ""; const tc=await c._page.getTextContent(); const sc=c._vp.scale; const box={x0:rect.x/sc,y0:rect.y/sc,x1:(rect.x+rect.w)/sc,y1:(rect.y+rect.h)/sc}; const vh=c._vp.height/sc, pad=60;
@@ -2183,9 +2189,40 @@ async function openCatalogPicker(d,onCrop){
       const rect={x:Math.min(s0.x,p.x)*k,y:Math.min(s0.y,p.y)*k,w:Math.abs(p.x-s0.x)*k,h:Math.abs(p.y-s0.y)*k};
       if(rect.w<20||rect.h<20){ boxEl?.remove(); return; }
       boxEl.style.borderStyle="solid"; boxEl.style.background="rgb(15 107 82 / .22)";
-      const blob=await cropToBlob(c,rect); const txt=await textFor(rect); added++; $("#cp-n").textContent=`${added} added`; toast("Added to the RFQ"); onCrop(blob,txt); });
+      const blob=await cropToBlob(c,rect); const txt=await textFor(rect); added++; $("#cp-n").textContent=`${added} added`; toast("Added"); onCrop(blob,txt); });
     return w;
   }
+}
+async function buildSampleXlsx(s,R){
+  const EJ=await getExcelJS(); const wb=new EJ.Workbook(); wb.creator=S.settings.signCompany||"Premier Accessory Group";
+  const thin={style:"thin",color:{argb:"FFBFBFBF"}}, border={top:thin,left:thin,bottom:thin,right:thin};
+  const ws=wb.addWorksheet("Sample Request",{properties:{tabColor:{argb:"FF548235"}},pageSetup:{orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0}});
+  const cols=[["No.",5],["Photo",24],["Item / Model",28],["Description",44],["Color / Version",16],["Qty",7],["Sample Cost (USD)",12],["Ready Date",13],["Tracking No.",18],["Factory Remarks",26]];
+  ws.columns=cols.map(([,w])=>({width:w}));
+  ws.mergeCells(1,1,1,cols.length); const t=ws.getCell(1,1); t.value="SAMPLE REQUEST"; t.font={bold:true,size:16,color:{argb:"FFFFFFFF"}}; t.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF375623"}}; t.alignment={horizontal:"center",vertical:"middle"}; ws.getRow(1).height=30;
+  const info=[["From",[S.settings.signName,S.settings.signCompany].filter(Boolean).join(", ")],["Factory",[s.company,s.contactName].filter(Boolean).join(" · ")],["Request",(R.title||"")+"   ·   Date: "+today()],["Samples needed by",R.due||"As soon as possible"],["Ship samples to",R.shipTo||""],["Courier account",R.courier||"Prepaid by factory unless agreed otherwise"],["Notes",R.notes||""]].filter(([k,v])=>v||k==="Factory");
+  info.forEach(([k,v],i)=>{ const r=i+2; ws.mergeCells(r,1,r,2); ws.mergeCells(r,3,r,cols.length); const a=ws.getCell(r,1), b=ws.getCell(r,3); a.value=k; a.font={bold:true}; a.border=border; b.value=v; b.border=border; b.alignment={wrapText:true,vertical:"middle"}; if(k==="Factory"&&!v) b.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFFF2CC"}}; if(String(v).length>90) ws.getRow(r).height=32; });
+  const h0=info.length+3, hr=ws.getRow(h0); hr.height=32;
+  cols.forEach(([h],i)=>{ const c=hr.getCell(i+1); c.value=h; c.font={bold:true,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:i>=6?"FF7F6000":"FF548235"}}; c.alignment={wrapText:true,vertical:"middle",horizontal:"center"}; c.border=border; });
+  for(let i=0;i<R.items.length;i++){
+    const it=R.items[i], rn=h0+1+i, row=ws.getRow(rn); row.height=100;
+    row.getCell(1).value=i+1; row.getCell(3).value=[it.name,it.model?`(${it.model})`:""].filter(Boolean).join(" "); row.getCell(4).value=it.description||""; row.getCell(5).value=it.color||"";
+    const q=num(it.qty)??num(R.qty); row.getCell(6).value=q!=null?q:(it.qty||R.qty||"");
+    for(let c=1;c<=cols.length;c++){ const cell=row.getCell(c); cell.border=border; cell.alignment={wrapText:true,vertical:"middle",horizontal:(c===1||c===6)?"center":"left"}; if(c>=7) cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFFF2CC"}}; }
+    row.getCell(7).numFmt='"$"#,##0.00';
+    const src=it._pv||it.img; if(src){ try{ const r=await fetch(src); let b=await r.blob(); if(!/jpe?g|png/.test(b.type)) b=await shrink(b,600);
+        const buf=await b.arrayBuffer(); const ext=(b.type||"").includes("png")?"png":"jpeg"; const id=wb.addImage({buffer:buf,extension:ext});
+        const bm=await createImageBitmap(b); const k=Math.min(160/bm.width,125/bm.height,1);
+        ws.addImage(id,{tl:{col:1.1,row:rn-1+0.08},ext:{width:Math.round(bm.width*k),height:Math.round(bm.height*k)},editAs:"oneCell"}); }catch(e){} }
+  }
+  const end=h0+R.items.length+1;
+  const tot=ws.getRow(end); tot.getCell(5).value="Total"; tot.getCell(5).font={bold:true}; tot.getCell(5).alignment={horizontal:"right"};
+  if(R.items.length){ tot.getCell(6).value={formula:`SUM(F${h0+1}:F${end-1})`}; tot.getCell(7).value={formula:`SUMPRODUCT(F${h0+1}:F${end-1},G${h0+1}:G${end-1})`}; tot.getCell(7).numFmt='"$"#,##0.00'; }
+  [5,6,7].forEach(c=>tot.getCell(c).border=border);
+  ["Factory: please fill in the yellow columns and send this form back with the tracking number.","Mark every sample with its model number and the item No. from this form, and put a printed copy of this form in the box.","Declare the shipment as samples of no commercial value. Do not ship without confirming the freight terms above."].forEach((x,i)=>{ const r=end+2+i; ws.mergeCells(r,1,r,cols.length); const c=ws.getCell(r,1); c.value=x; c.alignment={wrapText:true}; if(i===0) c.font={bold:true}; });
+  ws.views=[{state:"frozen",ySplit:h0}];
+  const buf=await wb.xlsx.writeBuffer();
+  return new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
 }
 async function buildRfqXlsx(s,R){
   const EJ=await getExcelJS(); const wb=new EJ.Workbook(); wb.creator=S.settings.signCompany||"Premier Accessory Group";
@@ -3105,7 +3142,8 @@ render();
     if(sample&&imgOK){ const b=document.createElement("button"); b.className="btn sm ghost"; b.textContent="Scan a stack"; b.onclick=openBulk; $(".brand").append(b); }
     if(sample){ const w=document.createElement("button"); w.className="btn sm ghost"; w.textContent="✎ Writing helper"; w.onclick=()=>openMessage(null); $(".brand").append(w); }
     const g=document.createElement("button"); g.className="btn sm ghost"; g.textContent="Settings"; g.onclick=openSettings; $(".brand").append(g);
-    if(canWrite&&db){ const rb=document.createElement("button"); rb.className="btn sm"; rb.id="rfqnew"; rb.textContent="📝 Make RFQ"; rb.onclick=()=>openRfq(null); $(".brand").append(rb); }
+    if(canWrite&&db){ const rb=document.createElement("button"); rb.className="btn sm"; rb.id="rfqnew"; rb.textContent="📝 Make RFQ"; rb.onclick=()=>openRfq(null); $(".brand").append(rb);
+      const sb=document.createElement("button"); sb.className="btn sm"; sb.id="samplenew"; sb.textContent="📦 Sample request"; sb.onclick=()=>openRfq(null,null,null,"sample"); $(".brand").append(sb); }
     if(sample&&imgOK&&assets&&db){ const cs=document.createElement("button"); cs.className="btn sm"; cs.id="compshop"; cs.textContent="🛒 Comp shop"; cs.onclick=()=>openCompShop(); $(".brand").append(cs); }
     if(sample){ const fs=document.createElement("button"); fs.className="btn sm"; fs.id="findsim"; fs.textContent="📷 Find similar"; fs.onclick=openFindSimilar; $(".brand").append(fs); }
     else if(assets&&db){ const fs=document.createElement("button"); fs.className="btn sm"; fs.id="findsim"; fs.textContent="📷 Find similar"; fs.onclick=()=>{ window.__dbPreset="find"; openDropBox(); }; $(".brand").append(fs); }
