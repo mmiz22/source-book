@@ -690,6 +690,20 @@ const TYPE_GROUPS=[["Audio", ["Over-ear headphones", "TWS earbuds", "Open-ear ea
 // normalised item text), so the same product from different factories lines up in one group.
 // Target retail is set per product type (settings/targets); a line's own "Target retail" overrides it.
 const ALL_TYPES=TYPE_GROUPS.flatMap(g=>g[1]);
+// Quotes tab: the category chips filter by what the ITEM is (its product type), not by every category its factory is filed under.
+// Each product type maps to the factory-category families it belongs in; types not listed fall back to the factory's own categories.
+const GROUP_CATS={"Audio":["Audio"],"Chargers & Power":["Chargers & Power"],"Phone, Car, Camera":["Phone & Car Accessories"],"Automotive & Cargo":["Automotive & Tow/Hitch"],"Barware":["Barware"],"Kitchen":["Housewares"],"Lighting":["Lighting"],"Fans":["Fans & Small Appliances"],"Home":["Home Decor & Clocks"],"Home Appliances":["Fans & Small Appliances"],"Sports, Outdoor, Toys":["Sporting Goods"]};
+const TYPE_CATS_OVERRIDE={"Ring light":["Tripods & Selfie Sticks","Phone & Car Accessories","Cameras & Photo"],"Ring light tripod":["Tripods & Selfie Sticks","Phone & Car Accessories","Cameras & Photo"],"Selfie stick / phone tripod":["Tripods & Selfie Sticks","Phone & Car Accessories"],"Camera":["Cameras & Photo"],"Laptop stand / computer accessory":["Computer & Desk"],"Network cable / adapter":["Computer & Desk"],"Starlink accessory":["Phone & Car Accessories","Computer & Desk"],
+  "Ratchet straps":["Tie-Down Straps","Automotive & Tow/Hitch"],"Retractable ratchet straps":["Tie-Down Straps","Automotive & Tow/Hitch"],"Bungee cords":["Tie-Down Straps","Automotive & Tow/Hitch"],"Cargo net":["Tie-Down Straps","Automotive & Tow/Hitch"],"Tow strap":["Tie-Down Straps","Automotive & Tow/Hitch"],
+  "Insulated tumbler / bottle":["Barware","Housewares"],"Water bottle":["Barware","Housewares","Water Filters"],
+  "Toaster":["Kitchen Appliances"],"Blender / food processor":["Kitchen Appliances"],"Kitchen appliance – other":["Kitchen Appliances"],"Air fryer":["Kitchen Appliances"],"Coffee maker":["Kitchen Appliances"],"Electric kettle":["Kitchen Appliances"],"Popcorn / snack maker":["Kitchen Appliances"],
+  "Camping lantern":["Lighting","Outdoor & Camping"],"Makeup mirror with light":["Lighting","Cosmetics & Personal Care"],"Security / alarm":["Home Improvement","Home Decor & Clocks"],"Smart home device":["Home Improvement","Home Decor & Clocks"],
+  "Stick / handheld vacuum":["Vacuums & Cleaning"],"Robot vacuum":["Vacuums & Cleaning"],"Carpet / floor cleaner":["Vacuums & Cleaning"],"Hair dryer / styler":["Cosmetics & Personal Care","Fans & Small Appliances"],"Mosquito repeller":["Outdoor & Camping","Fans & Small Appliances"],
+  "Snow sled":["Toys & Seasonal","Sporting Goods"],"Pool float":["Toys & Seasonal"],"Bubble toy":["Toys & Seasonal"],"Snow toy":["Toys & Seasonal"],"Toy – other":["Toys & Seasonal"],"Swim mask / goggles":["Toys & Seasonal","Sporting Goods"],"Air pump":["Sporting Goods","Automotive & Tow/Hitch"],"Cooler bag":["Outdoor & Camping","Bags & Luggage"],
+  "Battery":["Batteries"],"Pet supplies":["Pet Supplies"],"Pet grooming":["Pet Supplies"],"Screwdriver set":["Tools & Hardware"],"Tool kit":["Tools & Hardware"],"Massager":["Health & Wellness"],"Thermometer":["Health & Wellness"],"Hair clipper / trimmer":["Cosmetics & Personal Care"],"Beauty accessory":["Cosmetics & Personal Care"]};
+const TYPE_CATS=new Map(); TYPE_GROUPS.forEach(([g,ts])=>ts.forEach(t=>{ const c=TYPE_CATS_OVERRIDE[t]||GROUP_CATS[g]; if(c) TYPE_CATS.set(t,c); }));
+// true when a quote line belongs under the selected category chip
+function lineInCat(ty,s){ if(S.cat==="All") return true; const c=ty&&!ty.a?TYPE_CATS.get(ty.t):null; return c?c.includes(famOf(S.cat)):arr(s?.categories).some(x=>inCat(x,S.cat)); }
 const ADDON_GROUP="Add-ons & upcharges", UNSORTED="Not sorted yet";
 S.ptypes=new Map(); S.ptypeDocs=new Set(); S.targets={}; S.targetsExists=false;
 S.qtype="All"; S.qfit="All"; S.addons=false; S.openGroups=new Set(); S.tagging="";
@@ -875,6 +889,7 @@ function renderQuotes(L,shown){
   for(const q of S.quotes){ if(!ids.has(q.supplierId)) continue; const s=S.sup.get(q.supplierId);
     for(const l of arr(q.lines)){ if(!l||!(l.item||l.price)) continue;
       const ty=typeOf(l);
+      if(!lineInCat(ty,s)) continue;
       if(ty?.a&&!S.addons){ hidden++; continue; }
       const t=ty?(ty.a?ADDON_GROUP:ty.t):UNSORTED;
       if(term){ const hay=[l.item,l.sku,t,s?.company,s?.companyChinese,s?.products].join(" ").toLowerCase(); if(!term.split(/\s+/).every(w=>hay.includes(w))) continue; }
@@ -914,9 +929,9 @@ function renderQuotes(L,shown){
 
 function srcOf(s){ if(Array.isArray(s.sources)&&s.sources.length) return s.sources; const v=String(s.source||"").toLowerCase(); if(v.includes("alibaba")) return ["Alibaba"]; if(v.includes("globalsources")) return ["Global Sources"]; if(v.includes("wechat")) return ["WeChat"]; if(v.includes("email")) return ["Email"]; if(v.includes("card")) return ["Card scan"]; if(!v && (s.cardFront||s.cardBack||arr(s.cards).length)) return ["Card scan"]; return ["Added by hand"]; }
 function srcBadges(s){ return srcOf(s).map(x=>`<span class="src src-${esc(x.replace(/\W/g,""))}">${esc(x)}</span>`).join(""); }
-function matches(s){
+function matches(s,noCat){
   if (S.src!=="All" && !srcOf(s).includes(S.src)) return false;
-  if (S.cat!=="All" && !arr(s.categories).some(c=>inCat(c,S.cat))) return false;
+  if (!noCat && S.cat!=="All" && !arr(s.categories).some(c=>inCat(c,S.cat))) return false;
   if (S.proj!=="All" && !arr(s.projects).includes(S.proj)) return false;
   if (S.met!=="All" && s.metAt!==S.met) return false;
   if (!S.q) return true;
@@ -959,7 +974,7 @@ function render(){
   const L=$("#list");
   if (!db){ return; }
   if (!S.loaded.s){ L.innerHTML=`<div class="empty"><strong>Opening your Source Book…</strong></div>`; return; }
-  const shown = sups.filter(matches).sort((a,b)=>String(a.company||"").localeCompare(String(b.company||"")));
+  const shown = sups.filter(s=>matches(s,S.view==="q")).sort((a,b)=>String(a.company||"").localeCompare(String(b.company||"")));
   if (S.view==="f"){
     if (!sups.length){ L.innerHTML=`<div class="empty"><strong>No factories yet</strong><span>Snap a photo of a factory's business card and Claude fills in the contact for you. You can add quotes once it's saved.</span><button class="btn primary" data-act="add">＋ Add your first factory</button></div>`; return; }
     if (!shown.length){ L.innerHTML=`<div class="empty"><strong>Nothing matches</strong><span>Try another search or category.</span></div>`; return; }
