@@ -477,6 +477,29 @@ main .wrap{padding-bottom:150px}
 #gh-status{bottom:calc(env(safe-area-inset-bottom,0px) + 66px)}
 @media (min-width:980px){#gh-status{bottom:12px;left:calc(var(--railw) + 12px)}}
 
+/* phone tab bar: four main tabs plus More; the other four open as a small menu above the bar */
+#v-more{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Ccircle cx=%225.5%22 cy=%2212%22 r=%221.8%22/%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%221.8%22/%3E%3Ccircle cx=%2218.5%22 cy=%2212%22 r=%221.8%22/%3E%3C/svg%3E")}
+@media (max-width:979.98px){
+  body .searchrow .seg{overflow:visible}
+  body .searchrow .seg button{flex:1 1 0;font-size:.68rem}
+  body .searchrow .seg #v-c,body .searchrow .seg #v-d,body .searchrow .seg #v-r,body .searchrow .seg #v-t{display:none}
+  .seg:has(#v-c[aria-pressed="true"],#v-d[aria-pressed="true"],#v-r[aria-pressed="true"],#v-t[aria-pressed="true"]) #v-more{color:var(--accent);font-weight:600}
+  body .searchrow .seg.mopen #v-c,body .searchrow .seg.mopen #v-d,body .searchrow .seg.mopen #v-r,body .searchrow .seg.mopen #v-t{display:flex;align-items:center;gap:12px;position:fixed;right:max(8px,env(safe-area-inset-right,0px));width:190px;height:46px;flex:none;padding:0 16px;font-size:.92rem;text-align:left;background:var(--menu);color:#fff;z-index:9;overflow:visible;font-weight:400}
+  body .searchrow .seg.mopen button[aria-pressed="true"]:is(#v-c,#v-d,#v-r,#v-t){color:#7be3a8;font-weight:600}
+  body .searchrow .seg.mopen :is(#v-c,#v-d,#v-r,#v-t)::before{margin:0;flex:none;width:21px;height:21px}
+  body .searchrow .seg.mopen #v-c{bottom:calc(env(safe-area-inset-bottom,0px) + 64px + 138px);border-radius:8px 8px 0 0}
+  body .searchrow .seg.mopen #v-d{bottom:calc(env(safe-area-inset-bottom,0px) + 64px + 92px)}
+  body .searchrow .seg.mopen #v-r{bottom:calc(env(safe-area-inset-bottom,0px) + 64px + 46px)}
+  body .searchrow .seg.mopen #v-t{bottom:calc(env(safe-area-inset-bottom,0px) + 64px);border-radius:0 0 8px 8px}
+}
+@media (min-width:980px){#v-more{display:none}}
+/* quick actions above the Scan card button */
+#fabmenu{position:fixed;z-index:7;right:max(16px,calc(env(safe-area-inset-right,0px) + 16px));bottom:calc(env(safe-area-inset-bottom,0px) + 128px);background:var(--menu);border-radius:8px;padding:6px 0;min-width:210px;display:none;box-shadow:var(--shadow-hi)}
+#fabmenu.open{display:grid}
+#fabmenu button{background:transparent;border:0;color:#fff;text-align:left;padding:12px 16px;font-size:.95rem;cursor:pointer}
+#fabmenu button:hover,#fabmenu button:focus-visible{background:rgb(255 255 255 / .12)}
+@media (min-width:980px){#fabmenu{right:auto;left:calc(var(--lw) + var(--railw) - 226px);bottom:72px} body.tbl #fabmenu{left:auto;right:24px}}
+
 </style>
 
 <header class="top">
@@ -498,6 +521,7 @@ main .wrap{padding-bottom:150px}
         <button id="v-d" aria-pressed="false">Files</button>
         <button id="v-r" aria-pressed="false">Replies</button>
         <button id="v-t" aria-pressed="false">To do</button>
+        <button id="v-more" type="button" aria-haspopup="true" aria-expanded="false">More</button>
       </div>
     </div>
     <div class="tabs" id="cats" role="group" aria-label="Categories"></div>
@@ -508,7 +532,8 @@ main .wrap{padding-bottom:150px}
   <div class="empty"><strong>Your factory contacts will appear here</strong><span>Tap “Add factory” to photograph a business card. Claude reads the name, contact, phones, WeChat and address for you.</span></div>
 </div></main>
 
-<button class="btn primary fab" id="add">Scan card</button>
+<button class="btn primary fab" id="add" aria-haspopup="true">Scan card</button>
+<div id="fabmenu" role="menu"></div>
 <div id="sheetRoot"></div>
 <div id="toastRoot"></div>
 <div id="viewerRoot"></div>
@@ -904,7 +929,7 @@ function render(){
       const qn = quotesFor(s.id).reduce((n,q)=>n+arr(q.lines).length,0);
       const ini = (s.company||"?").replace(/[^A-Za-z0-9]/g,"").slice(0,2).toUpperCase()||"?";
       return `<button class="slip${detailId===s.id?" on":""}" data-open="${esc(s.id)}">
-        ${(s.cardFront||arr(s.cards)[0]?.file)?`<img class="thumb" src="${blobUrl(s.cardFront||arr(s.cards)[0].file)}" alt="">`:(()=>{ const p=quotesFor(s.id).flatMap(q=>arr(q.lines)).find(l=>l.img)||(()=>{ const sp=samplesFor(s.id).flatMap(x=>arr(x.photos))[0]; return sp?{img:blobUrl(sp)}:null; })(); return p?`<img class="thumb" style="object-fit:contain;background:#fff;aspect-ratio:1" src="${esc(p.img)}" alt="" loading="lazy">`:`<div class="thumb">${esc(ini)}</div>`; })()}
+        ${(s.cardFront||arr(s.cards)[0]?.file)?`<img class="thumb" src="${blobUrl(s.cardFront||arr(s.cards)[0].file)}" alt="">`:(()=>{ const p=quotesFor(s.id).flatMap(q=>arr(q.lines)).find(l=>l.img)||(()=>{ const sp=samplesFor(s.id).flatMap(x=>arr(x.photos))[0]; return sp?{img:blobUrl(sp)}:null; })(); return p?`<img class="thumb" style="object-fit:contain;background:#fff;aspect-ratio:1" src="${esc(p.img)}" alt="" loading="lazy">`:`<div class="thumb" style="background:${avColor(s.company||s.id)}">${esc(ini)}</div>`; })()}
         <div class="body">
           <div class="name">${esc(s.company||"Unnamed factory")}</div>
           ${s.companyChinese?`<div class="cn">${esc(s.companyChinese)}</div>`:""}
@@ -3187,6 +3212,24 @@ async function exportContacts(){
   try{ await downloads.save({filename:`source-book-contacts-${today()}.csv`, data:"\uFEFF"+csv(rows)}); toast(`${list.length} contacts exported. Import the file in Google Contacts or Outlook.`); }catch(e){ if(e?.code && e.code!=="declined") toast("Export didn't finish"); }
 }
 document.addEventListener("error",e=>{ const t=e.target; if(t&&t.tagName==="IMG"&&(t.classList.contains("pimg")||t.classList.contains("ti")||t.classList.contains("thumb"))){ const d=document.createElement("div"); d.className=t.className.replace("pimg","ph")+" ph"; d.title="Picture couldn't load"; (t.closest("a.plink")||t).replaceWith(d); } },true);
+/* a steady colour per factory name for rows with no picture */
+function avColor(name){ const P=["#07c160","#2f80ed","#e2852b","#8e5bd1","#d9534f","#1aa3a3","#c2478f","#5b6b8c","#7a9a1e","#b7791f"]; let h=0; for(const ch of String(name||"")) h=(h*31+ch.codePointAt(0))>>>0; return P[h%P.length]; }
+/* ---------- More tab on phones, and quick actions on the Scan card button ---------- */
+(()=>{ const seg=$(".searchrow .seg"), mb=$("#v-more"); if(seg&&mb){
+    const set=o=>{ seg.classList.toggle("mopen",o); mb.setAttribute("aria-expanded",o?"true":"false"); };
+    mb.addEventListener("click",e=>{ e.stopPropagation(); set(!seg.classList.contains("mopen")); });
+    document.addEventListener("click",()=>set(false)); document.addEventListener("keydown",e=>{ if(e.key==="Escape") set(false); }); }
+  const fab=$("#add"), fm=$("#fabmenu"); if(fab&&fm){
+    const close=()=>fm.classList.remove("open");
+    fab.addEventListener("click",e=>{ const extra=[["findsim","📷 Find similar product"],["compshop","🛒 Comp shop a store"]].filter(([id])=>document.getElementById(id));
+      if(!extra.length) return;                       // nothing else to offer: scan straight away
+      e.stopImmediatePropagation(); e.preventDefault();
+      if(fm.classList.contains("open")){ close(); return; }
+      fm.innerHTML=`<button role="menuitem" data-fa="scan">📇 Scan a business card</button>`+extra.map(([id,t])=>`<button role="menuitem" data-fa="${id}">${t}</button>`).join("");
+      fm.classList.add("open"); },true);
+    fm.addEventListener("click",e=>{ const b=e.target.closest("[data-fa]"); if(!b) return; close(); if(b.dataset.fa==="scan") fab.onclick&&fab.onclick(); else document.getElementById(b.dataset.fa)?.click(); });
+    document.addEventListener("click",e=>{ if(!e.target.closest("#fabmenu")&&!e.target.closest("#add")) close(); }); document.addEventListener("keydown",e=>{ if(e.key==="Escape") close(); }); }
+})();
 /* ---------- tools menu: every button added to the title bar is collected under the ＋ button ---------- */
 (()=>{ const brand=$(".brand"), menu=$("#toolmenu"), tb=$("#toolsbtn"); if(!brand||!menu||!tb) return;
   const sweep=()=>{ [...brand.children].forEach(el=>{ if(el.tagName==="BUTTON"){ el.setAttribute("role","menuitem"); if(el.id==="rfqnew"||el.id==="samplenew"||el.id==="compshop"||el.id==="findsim") menu.prepend(el); else menu.append(el); } }); };
