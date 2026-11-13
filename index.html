@@ -500,6 +500,19 @@ main .wrap{padding-bottom:150px}
 #fabmenu button:hover,#fabmenu button:focus-visible{background:rgb(255 255 255 / .12)}
 @media (min-width:980px){#fabmenu{right:auto;left:calc(var(--lw) + var(--railw) - 226px);bottom:72px} body.tbl #fabmenu{left:auto;right:24px}}
 
+/* round camera button; any "N reading / N waiting" count shows as a small badge */
+#add.fab{width:56px;height:56px;padding:0;border-radius:50%;font-size:0;gap:0;overflow:visible}
+#add.fab::before{content:"";width:27px;height:27px;background:#fff;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.8%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M4 8.500a1.500 1.500 0 0 1 1.500-1.500h2.300l1.400-2h5.600l1.400 2h2.300A1.500 1.500 0 0 1 20 8.500v9a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 17.500z%22/%3E%3Ccircle cx=%2212%22 cy=%2213%22 r=%223.400%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.8%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M4 8.500a1.500 1.500 0 0 1 1.500-1.500h2.300l1.400-2h5.600l1.400 2h2.300A1.500 1.500 0 0 1 20 8.500v9a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 17.500z%22/%3E%3Ccircle cx=%2212%22 cy=%2213%22 r=%223.400%22/%3E%3C/svg%3E") center/contain no-repeat}
+#add.fab[data-n]::after{content:attr(data-n);position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--stamp);color:#fff;font-size:12px;font-weight:600;line-height:20px;text-align:center}
+@media (min-width:980px){ #add.fab{left:calc(var(--lw) + var(--railw) - 76px)} body.tbl #add.fab{left:auto;right:24px} }
+/* filter row under the search box: same flat grey controls as the search */
+.vtog{border-radius:6px;box-shadow:none;background:var(--sunk);padding:2px}
+.vtog button{background:transparent;border-radius:4px;padding:4px 11px;font-size:.8rem;color:var(--muted)}
+.vtog button[aria-pressed="true"]{background:var(--surface);color:var(--fg);font-weight:500}
+#cats .chip,#cats select.chip{background:var(--sunk);border:0;border-radius:6px;font-size:.8rem;padding:6px 10px}
+#cats .chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+#cats{gap:6px;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);padding-right:24px}
+
 </style>
 
 <header class="top">
@@ -538,6 +551,7 @@ main .wrap{padding-bottom:150px}
 <div id="toastRoot"></div>
 <div id="viewerRoot"></div>
 
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("sb-theme")==="dark"?"dark":"light"}catch(e){document.documentElement.dataset.theme="light"}</script>
 <script src="gh-shim.js"></script>
 <script>
 (() => {
@@ -3219,6 +3233,10 @@ function avColor(name){ const P=["#07c160","#2f80ed","#e2852b","#8e5bd1","#d9534
     const set=o=>{ seg.classList.toggle("mopen",o); mb.setAttribute("aria-expanded",o?"true":"false"); };
     mb.addEventListener("click",e=>{ e.stopPropagation(); set(!seg.classList.contains("mopen")); });
     document.addEventListener("click",()=>set(false)); document.addEventListener("keydown",e=>{ if(e.key==="Escape") set(false); }); }
+  { const tb=document.createElement("button"); tb.className="btn sm ghost"; tb.id="themebtn"; const lab=()=>{ tb.textContent=document.documentElement.dataset.theme==="dark"?"☀ Light mode":"🌙 Dark mode"; }; lab();
+    tb.onclick=()=>{ const d=document.documentElement.dataset.theme==="dark"?"light":"dark"; document.documentElement.dataset.theme=d; try{ localStorage.setItem("sb-theme",d); }catch{} document.querySelector('meta[name="theme-color"]')?.setAttribute("content",d==="dark"?"#161616":"#ededed"); lab(); };
+    $(".brand")?.append(tb); }
+  { const f=$("#add"); if(f){ const upd=()=>{ const m=String(f.textContent||"").match(/(\d+)/); if(m) f.dataset.n=m[1]; else delete f.dataset.n; f.setAttribute("aria-label",f.textContent||"Scan card"); f.title=f.textContent||"Scan card"; }; new MutationObserver(upd).observe(f,{childList:true,characterData:true,subtree:true}); upd(); } }
   const fab=$("#add"), fm=$("#fabmenu"); if(fab&&fm){
     const close=()=>fm.classList.remove("open");
     fab.addEventListener("click",e=>{ const extra=[["findsim","📷 Find similar product"],["compshop","🛒 Comp shop a store"]].filter(([id])=>document.getElementById(id));
