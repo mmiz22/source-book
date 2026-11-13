@@ -549,6 +549,13 @@ main .wrap{padding-bottom:150px}
 .prof .tags{margin-top:6px}
 @media (min-width:980px){ body:not(.tbl) #sheetRoot .sheet>.sheethead,body:not(.tbl) #sheetRoot .sheet>.stack{max-width:860px;margin-left:auto;margin-right:auto} }
 
+#sbody{grid-template-columns:minmax(0,1fr)} #sbody>*{min-width:0}
+/* search results */
+.srow{grid-template-columns:52px minmax(0,1fr) auto;box-shadow:none;border-radius:8px}
+.srow .who{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-weight:500;font-size:.92rem;line-height:1.3}
+.srow .what{font-size:.8rem}
+.srow:hover{box-shadow:none;background:var(--hover)}
+
 </style>
 
 <header class="top">
@@ -558,7 +565,7 @@ main .wrap{padding-bottom:150px}
       <div class="count" id="count">Loading…</div>
     </div>
     <div class="searchrow">
-      <input id="search" class="search" type="search" placeholder="Search" aria-label="Search factory, product, city or contact">
+      <input id="search" class="search" type="search" placeholder="Search products, factories, files" aria-label="Search products, factories, files and samples">
       <button id="toolsbtn" type="button" aria-label="Tools menu" aria-haspopup="true" aria-expanded="false" title="Tools">＋</button>
       <div class="toolmenu" id="toolmenu" role="menu"></div>
       <div class="seg" role="group" aria-label="View">
@@ -957,6 +964,83 @@ function matches(s,noCat){
 }
 
 /* ---------- main render ---------- */
+/* ---------- One search across everything: products first, related words, typos forgiven, price in the query ---------- */
+const SYN=[["earbuds","earbud","tws","earphone","earphones","earpods","inear"],["headphone","headphones","headset","headsets","overear"],["charger","chargers","charging","charge"],["cable","cables","cord","cords","wire"],
+  ["powerbank","powerbanks"],["speaker","speakers","soundbox"],["tumbler","tumblers"],["cup","cups","mug","mugs"],["bottle","bottles","flask","flasks"],["light","lights","lamp","lamps","lighting"],["nightlight","nightlights"],
+  ["holder","holders","mount","mounts"],["phone","phones","mobile","cellphone","smartphone"],["case","cases","cover","covers"],["flashlight","flashlights","torch","torches"],["bluetooth","bt"],["usbc","typec"],
+  ["vacuum","vacuums","hoover"],["knife","knives"],["toy","toys"],["fan","fans"],["watch","watches","smartwatch"],["camera","cameras","cam"],["tripod","tripods"],["selfiestick","selfiesticks"],["glass","glasses","glassware"],
+  ["strap","straps"],["magnetic","magsafe","magnet","magnets"],["bag","bags","pouch","pouches"],["box","boxes"],["battery","batteries"],["adapter","adapters","adaptor","adaptors"],["projector","projectors"],["massager","massagers","massage"],["blender","blenders","mixer"],
+  ["opener","openers"],["shaker","shakers"],["leash","leashes","lead"],["collar","collars"],["ball","balls"],["stand","stands"],["hub","hubs","dock","docks"],["mic","microphone","microphones"],["humidifier","humidifiers","diffuser","diffusers"]];
+const SYNMAP=(()=>{ const m=new Map(); SYN.forEach(g=>g.forEach(w=>m.set(w,g[0]))); return m; })();
+const PHR=[[/power\s*-?\s*banks?/g,"powerbank"],[/ear\s*-?\s*buds?/g,"earbuds"],[/ear\s*-?\s*phones?/g,"earphone"],[/in\s*-\s*ear/g,"inear"],[/over\s*-?\s*ear/g,"overear"],[/head\s*-?\s*phones?/g,"headphone"],[/(usb|type)\s*-?\s*c\b/g,"usbc"],
+  [/night\s*-?\s*lights?/g,"nightlight"],[/selfie\s*-?\s*sticks?/g,"selfiestick"],[/flash\s*-?\s*lights?/g,"flashlight"],[/smart\s*-?\s*watch(es)?/g,"smartwatch"],[/cell\s*-?\s*phones?/g,"cellphone"],[/blue\s*-\s*tooth/g,"bluetooth"]];
+function sNorm(t){ let x=String(t||"").toLowerCase(); for(const [re,to] of PHR) x=x.replace(re,to); return x; }
+function sTok(t){ return (sNorm(t).match(/[a-z0-9]+|[㐀-鿿]+/g)||[]).map(w=>{ if(SYNMAP.has(w)) return SYNMAP.get(w); if(w.length>3&&/[a-z]s$/.test(w)&&!/ss$/.test(w)){ const b=w.replace(/(ches|shes|xes)$/,m=>m.slice(0,-2)).replace(/ies$/,"y").replace(/s$/,""); return SYNMAP.get(b)||b; } return w; }); }
+function sParse(q){ let t=" "+String(q||"").toLowerCase()+" ", min=null, max=null; const N="\\$?\\s*(\\d+(?:\\.\\d+)?)";
+  t=t.replace(new RegExp(N+"\\s*(?:-|–|to)\\s*"+N),(m,a,b)=>{ min=+a; max=+b; return " "; });
+  t=t.replace(new RegExp("(?:under|below|less than|max|<=?|up to)\\s*"+N),(m,a)=>{ max=+a; return " "; });
+  t=t.replace(new RegExp("(?:over|above|more than|min|>=?|at least)\\s*"+N),(m,a)=>{ min=+a; return " "; });
+  return {toks:[...new Set(sTok(t))].filter(w=>w.length>1||/[㐀-鿿\d]/.test(w)), min, max}; }
+function sDist(a,b,cap){ if(Math.abs(a.length-b.length)>cap) return 9; let prev=Array.from({length:b.length+1},(_,i)=>i);
+  for(let i=1;i<=a.length;i++){ const cur=[i]; let best=i; for(let j=1;j<=b.length;j++){ cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1)); if(cur[j]<best) best=cur[j]; } if(best>cap) return 9; prev=cur; } return prev[b.length]; }
+let SIDX=null;
+function sIndex(){
+  if(SIDX&&SIDX.q===S.quotes&&SIDX.s===S.sup.size&&SIDX.d===S.docs&&SIDX.m===S.samples&&SIDX.f===S.finds&&SIDX.p===S.ptypes) return SIDX;
+  const vocab=new Set(), mk=(parts,head)=>{ const main=new Set(sTok(parts[0])), all=new Set(main); for(let i=1;i<parts.length;i++) sTok(parts[i]).forEach(w=>all.add(w)); all.forEach(w=>{ if(w.length>3) vocab.add(w); }); return {main,all,head:new Set(sTok(head||"")),raw:parts.filter(Boolean).join(" ").toLowerCase()}; };
+  const prods=[]; for(const q of S.quotes){ const sp=S.sup.get(q.supplierId); for(const l of arr(q.lines)){ if(!l||!l.item) continue; const ty=typeOf(l); prods.push({q,l,s:sp,t:ty&&!ty.a?ty.t:"",p:num(l.price),...mk([l.item+" "+(ty?.t||""),l.sku,l.note],(ty&&!ty.a&&!/^(other|item not named)$/i.test(ty.t))?ty.t:String(l.item).split(/[:;,(—]| - /)[0].slice(0,50))}); } }
+  const sups=[...S.sup.values()].map(x=>({s:x,...mk([[x.company,x.companyChinese,x.contactName].join(" "),x.products,arr(x.categories).join(" "),x.city,x.province,x.country,arr(x.projects).join(" "),x.metAt,x.wechat,arr(x.emails).join(" "),arr(x.phones).join(" "),x.notes,x.research?.summary,arr(x.research?.products).join(" ")])}));
+  const docs=S.docs.map(d=>({d,...mk([d.name,docTypeOf(d),d.category,S.sup.get(d.supplierId)?.company])}));
+  const samples=S.samples.map(x=>({x,...mk([x.item,x.tracking,x.notes,S.sup.get(x.supplierId)?.company])}));
+  const finds=arr(S.finds).map(x=>({x,...mk([[x.name,x.type,x.brand].join(" "),x.store,arr(x.features).join(" "),x.description])}));
+  return SIDX={q:S.quotes,s:S.sup.size,d:S.docs,m:S.samples,f:S.finds,p:S.ptypes,prods,sups,docs,samples,finds,vocab:[...vocab]};
+}
+function sScore(e,toks,alt){ let sc=0; for(const w of toks){ let b=0; const opts=[w,...(alt.get(w)||[])];
+    if(/[\u3400-\u9fff]/.test(w)){ if(e.raw.includes(w)) b=3; }
+    else for(const o of opts){ const pen=o===w?0:1.2; if(e.head.has(o)){ b=Math.max(b,5-pen); break; } if(e.main.has(o)){ b=Math.max(b,4-pen); break; } if(e.all.has(o)) b=Math.max(b,2.5-pen); }
+    if(!b&&w.length>=3){ for(const t of e.main) if(t.startsWith(w)){ b=2.2; break; } if(!b) for(const t of e.all) if(t.startsWith(w)){ b=1.5; break; } }
+    if(!b) return 0; sc+=b; } return sc; }
+function sRun(q){ const I=sIndex(), P=sParse(q), alt=new Map(); if(!P.toks.length&&P.min==null&&P.max==null) return null;
+  const inPrice=e=>(P.min==null||(e.p!=null&&e.p>=P.min))&&(P.max==null||(e.p!=null&&e.p<=P.max));
+  const go=()=>({prods:I.prods.map(e=>[P.toks.length?sScore(e,P.toks,alt):1,e]).filter(([sc,e])=>sc>0&&inPrice(e)),
+    sups:P.toks.length?I.sups.map(e=>[sScore(e,P.toks,alt),e]).filter(x=>x[0]>0):[], docs:P.toks.length?I.docs.map(e=>[sScore(e,P.toks,alt),e]).filter(x=>x[0]>0):[],
+    samples:P.toks.length?I.samples.map(e=>[sScore(e,P.toks,alt),e]).filter(x=>x[0]>0):[], finds:P.toks.length?I.finds.map(e=>[sScore(e,P.toks,alt),e]).filter(x=>x[0]>0):[]});
+  let R=go(), fixed=[];
+  if(P.toks.length&&!(R.prods.length+R.sups.length+R.docs.length)){            // nothing: try each word with one or two typos forgiven
+    for(const w of P.toks){ if(w.length<4||/\d/.test(w)) continue; const cap=w.length>=8?2:1; const near=I.vocab.map(v=>[sDist(w,v,cap),v]).filter(x=>x[0]<=cap).sort((a,b)=>a[0]-b[0]).slice(0,4).map(x=>x[1]); if(near.length){ alt.set(w,near); fixed.push(near[0]); } }
+    if(alt.size) R=go(); }
+  return {...R,P,fixed};
+}
+S.ssort=(()=>{ try{ return localStorage.getItem("sb-ssort")||"price"; }catch{ return "price"; } })(); S.sall=new Set();
+function renderSearch(L){
+  const R=sRun(S.q); document.body.classList.remove("tbl");
+  $("#cats").innerHTML=`<span class="vtog" role="group" aria-label="Sort products">${[["price","Cheapest"],["new","Newest"],["best","Best match"]].map(([k,t])=>`<button data-ssort="${k}" aria-pressed="${S.ssort===k}">${t}</button>`).join("")}</span><button class="chip" data-sclear="1">✕ Clear search</button>`;
+  if(!R){ L.innerHTML=`<div class="empty"><strong>Keep typing</strong><span>Try a product, a factory, a city, or add a price like “under 3”.</span></div>`; return; }
+  const strong=x=>R.P.toks.length&&x[0]>=4.6*R.P.toks.length?1:0;   // every word is in the product's own name or type
+  const by=S.ssort, ps=R.prods.slice().sort((a,b)=> by==="best"?(b[0]-a[0])||((a[1].p??1e9)-(b[1].p??1e9)) : by==="new"?(strong(b)-strong(a))||String(b[1].q.date||"").localeCompare(String(a[1].q.date||""))||(b[0]-a[0]) : (strong(b)-strong(a))||((a[1].p>0?a[1].p:1e9)-(b[1].p>0?b[1].p:1e9))||(b[0]-a[0]));
+  const top=x=>x.sort((a,b)=>b[0]-a[0]).map(y=>y[1]);
+  const sec=(key,title,items,row,cap)=>{ if(!items.length) return ""; const all=S.sall.has(key), show=all?items.slice(0,400):items.slice(0,cap);
+    return `<div class="qhead">${title} · ${items.length}</div>${show.map(row).join("")}${items.length>show.length?`<button class="btn sm ghost" data-sall="${key}" style="justify-self:start">Show all ${items.length}</button>`:""}`; };
+  const price=R.P.min!=null||R.P.max!=null?` · factory price ${R.P.min!=null&&R.P.max!=null?`$${R.P.min} to $${R.P.max}`:R.P.max!=null?`up to $${R.P.max}`:`from $${R.P.min}`}`:"";
+  const html=[
+    R.fixed.length&&(R.prods.length+R.sups.length+R.docs.length)?`<div class="note">No exact match, so these are the closest results.</div>`:"",
+    sec("p",`Products${price}`,ps.map(x=>x[1]),e=>`<div class="qrow2 srow" data-open="${esc(e.q.supplierId)}" tabindex="0" role="button">
+        ${e.l.img?`<img class="pimg" src="${esc(e.l.img)}" alt="" loading="lazy">`:`<div class="ph"></div>`}
+        <div class="who">${esc(e.l.item)}</div>
+        <div class="nums"><span>${money(e.l.price,e.q.currency)}</span><span class="note" style="font-size:.7rem">${esc(e.q.incoterm||"")}</span></div>
+        <div class="what">${esc(e.s?.company||e.s?.companyChinese||"Unknown factory")}</div>
+        <div class="meta2">${esc([e.t,e.l.moq?`MOQ ${e.l.moq}`:"",e.q.date].filter(Boolean).join(" · "))}</div></div>`,30),
+    sec("f","Factories",top(R.sups),e=>{ const x=e.s, ini=(x.company||"?").replace(/[^A-Za-z0-9]/g,"").slice(0,2).toUpperCase()||"?", pic=x.cardFront||arr(x.cards)[0]?.file;
+      return `<button class="slip${detailId===x.id?" on":""}" data-open="${esc(x.id)}">${pic?`<img class="thumb" src="${blobUrl(pic)}" alt="">`:`<div class="thumb" style="background:${avColor(x.company||x.id)}">${esc(ini)}</div>`}
+        <div class="body"><div class="name">${esc(x.company||"Unnamed factory")}</div><div class="meta">${esc([x.contactName,[x.city,x.province].filter(Boolean).join(", ")].filter(Boolean).join(" · "))}</div>${x.products?`<div class="meta">${esc(x.products)}</div>`:""}</div></button>`; },8),
+    sec("d","Catalogs and files",top(R.docs),e=>docRow(e.d,true),6),
+    sec("s","Samples",top(R.samples),e=>`<button class="slip" data-open="${esc(e.x.supplierId)}"><div class="thumb" style="background:var(--sunk);color:var(--muted)">📦</div><div class="body"><div class="name">${esc(e.x.item||"Sample")}</div><div class="meta">${esc([S.sup.get(e.x.supplierId)?.company,e.x.status||"Requested",e.x.requested].filter(Boolean).join(" · "))}</div></div></button>`,6),
+    sec("h","Store finds",top(R.finds),e=>`<div class="slip" style="cursor:default"><div class="thumb" style="background:var(--sunk);color:var(--muted)">🛒</div><div class="body"><div class="name">${esc(e.x.name||e.x.type||"Product")}</div><div class="meta">${esc([e.x.store,e.x.price!=null&&e.x.price!==""?`retail $${e.x.price}`:"",arr(e.x.matches).length?`${arr(e.x.matches).length} factories matched`:"no factory matched"].filter(Boolean).join(" · "))}</div></div></div>`,6)
+  ].join("");
+  const none=!R.prods.length;
+  L.innerHTML=(html.trim()?`<div class="stack" style="gap:10px">${html}</div>`:`<div class="empty"><strong>Nothing in your Source Book matches</strong><span>Check the spelling, use fewer words, or look for a new factory below.</span></div>`)
+    +(none&&R.P.toks.length?webBox({name:S.q.replace(/\s+/g," ").trim()}):"");
+  const first=L.querySelector(".stack"); if(first) wireDocs(first,null);
+}
 function render(){
   const sups=[...S.sup.values()];
   const nq = S.quotes.reduce((n,q)=>n+arr(q.lines).length,0);
@@ -990,6 +1074,7 @@ function render(){
   const L=$("#list");
   if (!db){ return; }
   if (!S.loaded.s){ L.innerHTML=`<div class="empty"><strong>Opening your Source Book…</strong></div>`; return; }
+  if (S.q.trim().length>=2){ renderSearch(L); return; }
   const shown = sups.filter(s=>matches(s,S.view==="q")).sort((a,b)=>String(a.company||"").localeCompare(String(b.company||"")));
   if (S.view==="f"){
     if (!sups.length){ L.innerHTML=`<div class="empty"><strong>No factories yet</strong><span>Snap a photo of a factory's business card and Claude fills in the contact for you. You can add quotes once it's saved.</span><button class="btn primary" data-act="add">＋ Add your first factory</button></div>`; return; }
@@ -2653,7 +2738,11 @@ async function exportCsv(){
 }
 
 /* ---------- events ---------- */
-$("#search").addEventListener("input",e=>{ S.q=e.target.value.trim(); render(); });
+{ let st=0; $("#search").addEventListener("input",e=>{ const v=e.target.value.trim(); clearTimeout(st); st=setTimeout(()=>{ if(S.q!==v) S.sall=new Set(); S.q=v; render(); },v.length>=2?200:0); }); }
+const clearSearch=()=>{ if(!S.q&&!$("#search").value) return; S.q=""; $("#search").value=""; S.sall=new Set(); };
+$(".searchrow .seg").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b&&b.id!=="v-more") clearSearch(); },true);
+$("#cats").addEventListener("click",e=>{ const so=e.target.closest("[data-ssort]"); if(so){ S.ssort=so.dataset.ssort; try{ localStorage.setItem("sb-ssort",S.ssort); }catch{} render(); return; } if(e.target.closest("[data-sclear]")){ clearSearch(); render(); $("#search").focus(); } });
+$("#list").addEventListener("click",e=>{ const a=e.target.closest("[data-sall]"); if(a){ S.sall.add(a.dataset.sall); render(); } });
 $("#v-f").onclick=()=>{ S.view="f"; render(); };
 $("#v-q").onclick=()=>{ S.view="q"; render(); };
 $("#v-q").addEventListener("click",()=>{ if(window.matchMedia("(min-width:980px)").matches && !document.querySelector("#scrim .stack #rt-t")) closeSheet(); });
