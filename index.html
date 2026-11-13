@@ -324,6 +324,17 @@ a.plink{display:block;line-height:0}
 .pipe div{background:var(--sunk);border-radius:6px;padding:8px 2px}
 .pipe .v{font-family:var(--display);font-size:1.4rem;font-variant-numeric:tabular-nums}
 .pipe .l{font-size:.72rem;color:var(--muted)}
+.ctree{display:grid;gap:7px}
+.crow{display:grid;grid-template-columns:minmax(0,12em) 1fr 3em;gap:3px 8px;align-items:center;font-size:.88rem}
+.crow .lab{background:none;border:0;padding:0;font:inherit;font-weight:600;color:inherit;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crow .lab:hover{text-decoration:underline}
+.crow .trk{height:12px;background:var(--sunk);border-radius:0 4px 4px 0;overflow:hidden}
+.crow .trk i{display:block;height:100%;background:var(--accent);border-radius:0 4px 4px 0;min-width:2px}
+.crow .n{font-family:var(--mono);font-size:.78rem;text-align:right;font-variant-numeric:tabular-nums}
+.csub{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 6px;padding:0 0 4px 10px;border-left:2px solid var(--line);margin-left:2px}
+.csub button{background:var(--sunk);border:0;border-radius:999px;padding:2px 9px;font:inherit;font-size:.78rem;color:var(--muted);cursor:pointer}
+.csub button:hover{color:var(--fg)}
+.csub button b{font-family:var(--mono);font-weight:500;color:var(--fg)}
 /* ---------- replies ---------- */
 .rrow{display:grid;grid-template-columns:1fr auto;gap:4px 12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px;margin:8px 0;box-shadow:var(--shadow)}
 .rrow .rname{cursor:pointer;min-width:0;overflow-wrap:anywhere;background:none;border:0;padding:0;text-align:left;color:inherit;font:inherit;font-weight:600}
@@ -580,7 +591,12 @@ main .wrap{padding-bottom:150px}
 <script src="gh-shim.js"></script>
 <script>
 (() => {
-const DEFAULT_CATS = ["Barware","Sporting Goods","Tie-Down Straps","Water Filters","Housewares","Packaging"];
+const DEFAULT_CATS = ["Barware","Outdoor & Sports – Sporting Goods","Tie-Down Straps","Water Filters","Kitchen & Housewares","Packaging & Logistics – Packaging"];
+// Category clean-up (Nov 2026): small and overlapping categories were folded into a parent as sub-categories ("Parent – Sub").
+// Old names still arriving from imports are moved to their new place when the data loads.
+const CAT_MOVE={"Batteries":"Chargers & Power – Batteries","Vacuums & Cleaning":"Fans & Small Appliances – Vacuums & Cleaning","Tripods & Selfie Sticks":"Phone & Car Accessories – Tripods & Selfie Sticks","Cameras & Photo":"Phone & Car Accessories – Cameras & Photo","Remotes":"Phone & Car Accessories – Remotes","Wearables & Smart Glasses":"Phone & Car Accessories – Wearables & Smart Glasses","Outdoor & Camping":"Outdoor & Sports – Outdoor & Camping","Sporting Goods":"Outdoor & Sports – Sporting Goods","Kitchen Appliances":"Kitchen & Housewares – Kitchen Appliances","Housewares":"Kitchen & Housewares","Housewares – Kitchen & Food Prep":"Kitchen & Housewares – Kitchen & Food Prep","Housewares – Storage & Organization":"Kitchen & Housewares – Storage & Organization","Housewares – Cleaning & Bath":"Kitchen & Housewares – Cleaning & Bath","Home Decor & Clocks":"Home & Decor – Home Decor & Clocks","Home Improvement":"Home & Decor – Home Improvement","Health & Wellness":"Health & Beauty – Health & Wellness","Cosmetics & Personal Care":"Health & Beauty – Cosmetics & Personal Care","Packaging":"Packaging & Logistics – Packaging","Logistics":"Packaging & Logistics – Logistics","Promo & Gifts":"Other – Promo & Gifts","Pet Supplies":"Other – Pet Supplies","Bags & Luggage":"Other – Bags & Luggage"};
+const moveCat=c=>CAT_MOVE[c]||c;
+const moveCats=l=>[...new Set(arr(l).map(moveCat))];
 const S = { sup:new Map(), quotes:[], samples:[], finds:[], docs:[], dcat:false, dgroup:(()=>{ try{ const v=localStorage.getItem("sb-dgroup"); return v==="other"?"other":"quote"; }catch{ return "quote"; } })(), dtype:"All", src:"All", met:"All", view:(()=>{ try{ return localStorage.getItem("sb-view")==="f"?"f":"h"; }catch{ return "h"; } })(), cat:"All", proj:"All", q:"", sort:(()=>{ try{ return localStorage.getItem("fb-sort")||"month"; }catch{ return "month"; } })(), loaded:{s:false,q:false} };
 const STATUSES=["Requested","Shipped","Received","Approved","Rejected"];
 let db=null, assets=null, sample=null, downloads=null, mcp=null, userNS=null, me=null, imgOK=false, canWrite=true;
@@ -701,7 +717,7 @@ const TYPE_CATS_OVERRIDE={"Ring light":["Tripods & Selfie Sticks","Phone & Car A
   "Stick / handheld vacuum":["Vacuums & Cleaning"],"Robot vacuum":["Vacuums & Cleaning"],"Carpet / floor cleaner":["Vacuums & Cleaning"],"Hair dryer / styler":["Cosmetics & Personal Care","Fans & Small Appliances"],"Mosquito repeller":["Outdoor & Camping","Fans & Small Appliances"],
   "Snow sled":["Toys & Seasonal","Sporting Goods"],"Pool float":["Toys & Seasonal"],"Bubble toy":["Toys & Seasonal"],"Snow toy":["Toys & Seasonal"],"Toy – other":["Toys & Seasonal"],"Swim mask / goggles":["Toys & Seasonal","Sporting Goods"],"Air pump":["Sporting Goods","Automotive & Tow/Hitch"],"Cooler bag":["Outdoor & Camping","Bags & Luggage"],
   "Battery":["Batteries"],"Pet supplies":["Pet Supplies"],"Pet grooming":["Pet Supplies"],"Screwdriver set":["Tools & Hardware"],"Tool kit":["Tools & Hardware"],"Massager":["Health & Wellness"],"Thermometer":["Health & Wellness"],"Hair clipper / trimmer":["Cosmetics & Personal Care"],"Beauty accessory":["Cosmetics & Personal Care"]};
-const TYPE_CATS=new Map(); TYPE_GROUPS.forEach(([g,ts])=>ts.forEach(t=>{ const c=TYPE_CATS_OVERRIDE[t]||GROUP_CATS[g]; if(c) TYPE_CATS.set(t,c); }));
+const TYPE_CATS=new Map(); TYPE_GROUPS.forEach(([g,ts])=>ts.forEach(t=>{ const c=TYPE_CATS_OVERRIDE[t]||GROUP_CATS[g]; if(c) TYPE_CATS.set(t,[...new Set(c.map(x=>famOf(moveCat(x))))]); }));
 // true when a quote line belongs under the selected category chip
 function lineInCat(ty,s){ if(S.cat==="All") return true; const c=ty&&!ty.a?TYPE_CATS.get(ty.t):null; return c?c.includes(famOf(S.cat)):arr(s?.categories).some(x=>inCat(x,S.cat)); }
 const ADDON_GROUP="Add-ons & upcharges", UNSORTED="Not sorted yet";
@@ -1748,7 +1764,10 @@ function renderDash(L,shown){
   const kpi=(v,l,d,act,alert)=>`<button class="kpi${alert?" alert":""}" data-dgo="${act}"><div class="v">${pc(v)}</div><div class="l">${l}</div>${d?`<div class="d">${d}</div>`:""}</button>`;
   // categories (families)
   const fam=new Map(); sups.forEach(s=>{ const seen=new Set(arr(s.categories).map(famOf)); if(!seen.size) seen.add("No category"); seen.forEach(f=>fam.set(f,(fam.get(f)||0)+1)); });
-  const famTop=[...fam].sort((a,b)=>b[1]-a[1]).slice(0,10), famMax=Math.max(1,...famTop.map(x=>x[1]));
+  const famTop=[...fam].sort((a,b)=>(a[0]==="Other"||a[0]==="No category")-(b[0]==="Other"||b[0]==="No category")||b[1]-a[1]), famMax=Math.max(1,...famTop.map(x=>x[1]));
+  const subs=new Map(); sups.forEach(s=>new Set(arr(s.categories)).forEach(c=>{ if(famOf(c)===c) return; const m=subs.get(famOf(c))||new Map(); m.set(c,(m.get(c)||0)+1); subs.set(famOf(c),m); }));
+  const catTree=`<div class="ctree">${famTop.map(([k,n])=>{ const sm=[...(subs.get(k)||[])].sort((a,b)=>b[1]-a[1]);
+    return `<div class="crow"><button class="lab" ${k==="No category"?"":`data-dcat="${esc(k)}"`} title="${esc(k)}">${esc(k)}</button><span class="trk"><i style="width:${(n/famMax*100).toFixed(1)}%"></i></span><span class="n">${n}</span>${sm.length?`<div class="csub">${sm.map(([c,m])=>`<button data-dcat="${esc(c)}">${esc(c.slice(k.length+3))} <b>${m}</b></button>`).join("")}</div>`:""}</div>`; }).join("")}</div>`;
   const src=new Map(); sups.forEach(s=>srcOf(s).forEach(x=>src.set(x,(src.get(x)||0)+1)));
   const srcL=[...src].sort((a,b)=>b[1]-a[1]), srcMax=Math.max(1,...srcL.map(x=>x[1]));
   const hb=(rows,max,attr)=>`<div class="hb">${rows.map(([k,n])=>`<span class="lab" ${attr?`${attr}="${esc(k)}"`:""} title="${esc(k)}">${esc(k)}</span><span class="trk" title="${esc(k)}: ${n}"><i style="width:${(n/max*100).toFixed(1)}%"></i></span><span class="n">${n}</span>`).join("")}</div>`;
@@ -1776,7 +1795,7 @@ function renderDash(L,shown){
       <div class="panel"><h3>Waiting on you</h3>${waitMe.length?`<div class="dl">${waitMe.slice(0,7).map(s=>{ const r=replyState(s); return `<button data-open="${esc(s.id)}"><span class="t">${esc(s.company||s.companyChinese||"Factory")}</span><span class="f flag ${r.cls}">${r.d!=null?`${r.d}d`:""}</span>${s.replyNote?`<span class="m">${esc(s.replyNote)}</span>`:""}</button>`; }).join("")}</div>${waitMe.length>7?`<button class="btn sm ghost" data-dgo="r" style="margin-top:8px">All ${waitMe.length} in Replies</button>`:""}`:`<div class="note">Nobody is waiting on you.</div>`}</div>
       <div class="panel"><h3>Quote fit by customer</h3><div class="sub">${pc(typed.length)} quoted items with a product type${untagged?` · ${pc(untagged)} not sorted yet`:""}</div>${fitHtml}${fitLegend}</div>
       <div class="panel"><h3>Best fits by product type</h3><div class="sub">For ${esc(activeCust()?.name||"your customer")} · lowest landed cost shown</div>${typeL.length?`<div class="dl">${typeL.map(([t,g])=>`<button data-dtype="${esc(t)}"><span class="t">${esc(t)}</span><span class="f">${g.ok}/${g.n} fit</span><span class="m">Best ${usd(g.best.f.lc.total)} landed · ${esc(S.sup.get(g.best.x.q.supplierId)?.company||"")} · ${Math.round(g.best.f.margin*100)}% margin</span></button>`).join("")}</div>`:`<div class="note">Set target retail prices in the Quotes tab to see which quotes fit.</div>`}</div>
-      <div class="panel"><h3>Factories by category</h3>${hb(famTop,famMax,"data-dcat")}</div>
+      <div class="panel"><h3>Factories by category</h3><div class="sub">${famTop.filter(x=>x[0]!=="No category").length} categories · tap a category or sub-category to see its factories</div>${catTree}</div>
       <div class="panel"><h3>Where they came from</h3>${hb(srcL,srcMax,"data-dsrc")}
         <h3 style="margin-top:16px">Samples</h3><div class="pipe">${pipe.map(([st,n])=>`<div><div class="v">${n}</div><div class="l">${st}</div></div>`).join("")}</div></div>
       <div class="panel"><h3>New this week</h3>${newWk.length?`<div class="dl">${newWk.slice(0,8).map(s=>`<button data-open="${esc(s.id)}"><span class="t">${esc(s.company||s.companyChinese||"Factory")}</span><span class="f note">${rel(addedAt(s))}</span><span class="m">${esc([srcOf(s)[0],arr(s.categories)[0],s.products].filter(Boolean).join(" · ").slice(0,110))}</span></button>`).join("")}</div>${newWk.length>8?`<div class="note" style="margin-top:6px">+${newWk.length-8} more in Factories</div>`:""}`:`<div class="note">No new factories in the last 7 days.</div>`}</div>
@@ -3316,7 +3335,7 @@ render();
   $("#add").hidden=!canWrite;
   if(downloads){ const b=document.createElement("button"); b.className="btn sm ghost"; b.textContent="Export CSV"; b.onclick=exportCsv; $(".brand").append(b);
     const c=document.createElement("button"); c.className="btn sm ghost"; c.textContent="Export contacts"; c.onclick=exportContacts; $(".brand").append(c); }
-  db.collection("suppliers").onSnapshot(snap=>{ S.sup=new Map(snap.docs.map(x=>[x.id,{id:x.id,...x.data()}])); S.loaded.s=true; render(); },
+  db.collection("suppliers").onSnapshot(snap=>{ S.sup=new Map(snap.docs.map(x=>{ const d={id:x.id,...x.data()}; if(Array.isArray(d.categories)) d.categories=moveCats(d.categories); return [x.id,d]; })); S.loaded.s=true; render(); },
     e=>{ $("#list").innerHTML=`<div class="empty"><strong>Couldn't load factories</strong><span>Reload the page to try again.</span></div>`; });
   db.collection("quotes").onSnapshot(snap=>{ S.quotes=snap.docs.map(x=>({id:x.id,...x.data()})); S.loaded.q=true; render(); }, ()=>{});
   db.collection("rfqs").onSnapshot(snap=>{ S.rfqs=snap.docs.map(x=>({id:x.id,...x.data()})); }, ()=>{});
