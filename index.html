@@ -324,26 +324,6 @@ a.plink{display:block;line-height:0}
 .pipe div{background:var(--sunk);border-radius:6px;padding:8px 2px}
 .pipe .v{font-family:var(--display);font-size:1.4rem;font-variant-numeric:tabular-nums}
 .pipe .l{font-size:.72rem;color:var(--muted)}
-.dsec{font-family:var(--display);font-size:1.25rem;font-weight:600;margin:10px 0 -4px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-.dsec:first-child{margin-top:0}
-.dsec .dn{font-family:var(--mono);font-size:.74rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;width:1.7em;height:1.7em;display:inline-grid;place-items:center;align-self:center}
-.dsec .ds{font-family:var(--body);font-size:.82rem;font-weight:400;color:var(--muted)}
-.dl button:disabled{cursor:default;opacity:1}
-.dl button:disabled:hover .t{text-decoration:none}
-.custrow{display:grid;grid-template-columns:minmax(0,7.5em) auto 1fr;gap:2px 8px;align-items:baseline;width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);padding:8px 2px;font:inherit;color:inherit;cursor:pointer}
-.custrow:hover .cn{text-decoration:underline}
-.custrow .cn{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.custrow .cv{font-family:var(--display);font-size:1.4rem;color:var(--ok);font-variant-numeric:tabular-nums}
-.custrow .cl{color:var(--muted);font-size:.82rem}
-.custrow .stk{grid-column:1/-1;height:8px}
-.mini{display:grid;gap:6px}
-.mini div{display:grid;grid-template-columns:3.2em 1fr;gap:8px;align-items:baseline;border-bottom:1px solid var(--line);padding:4px 2px}
-.mini .v{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
-.mini .l{color:var(--muted);font-size:.86rem}
-.statrow{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;color:var(--muted);font-size:.86rem;padding:2px 2px 0}
-.statrow button{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer}
-.statrow button:hover{text-decoration:underline}
-.statrow b{color:var(--fg);font-variant-numeric:tabular-nums}
 /* ---------- replies ---------- */
 .rrow{display:grid;grid-template-columns:1fr auto;gap:4px 12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px;margin:8px 0;box-shadow:var(--shadow)}
 .rrow .rname{cursor:pointer;min-width:0;overflow-wrap:anywhere;background:none;border:0;padding:0;text-align:left;color:inherit;font:inherit;font-weight:600}
@@ -1742,95 +1722,50 @@ const SAMPLE_WAIT_DAYS=10;
 function renderDash(L,shown){
   const ids=new Set(shown.map(s=>s.id)); const sups=shown;
   const now=Date.now(), wk=7*864e5;
-  const pc=n=>n.toLocaleString("en-US");
-  const nm=s=>s?(s.company||s.companyChinese||"Factory"):"Factory";
-  const rel=t=>{ const d=Math.floor((now-t)/864e5); return d<=0?"today":d===1?"yesterday":`${d} days ago`; };
-  const more=(n,lim,go,lab)=>n>lim?`<button class="btn sm ghost" data-dgo="${go}" style="margin-top:8px">All ${n} in ${lab}</button>`:"";
-  const lines=[]; for(const q of S.quotes){ if(!ids.has(q.supplierId)) continue; for(const l of arr(q.lines)){ if(!l||!(l.item||l.price)) continue; lines.push({q,l,ty:typeOf(l)}); } }
-  /* 1. needs your action */
-  const bySince=(x,y)=>String(x.replySince||"").localeCompare(String(y.replySince||""));
-  const waitMe=sups.filter(s=>s.replyWho==="me").sort(bySince);
-  const waitThem=sups.filter(s=>s.replyWho==="them").sort(bySince);
-  const replyRow=s=>{ const r=replyState(s); return `<button data-open="${esc(s.id)}"><span class="t">${esc(nm(s))}</span><span class="f flag ${r.cls}">${r.d!=null?`${r.d}d`:""}</span>${s.replyNote?`<span class="m">${esc(s.replyNote)}</span>`:""}</button>`; };
+  const newWk=sups.filter(s=>{ const t=addedAt(s); return t&&now-t<wk; }).sort((a,b)=>addedAt(b)-addedAt(a));
+  const lines=[]; for(const q of S.quotes){ if(!ids.has(q.supplierId)) continue; for(const l of arr(q.lines)){ if(!l||!(l.item||l.price)) continue; const ty=typeOf(l); lines.push({q,l,ty}); } }
+  const waitMe=sups.filter(s=>s.replyWho==="me").sort((a,b)=>String(a.replySince||"").localeCompare(String(b.replySince||"")));
+  const waitThem=sups.filter(s=>s.replyWho==="them");
   const smp=S.samples.filter(x=>ids.has(x.supplierId));
-  const openS=smp.filter(x=>["Requested","Shipped"].includes(x.status||"Requested")).sort((x,y)=>String(x.requested||"").localeCompare(String(y.requested||"")));
-  const todo=todoItems(shown).filter(i=>i.kind!=="sample");
-  const pend=arr(S.pending).slice().sort((x,y)=>String(y.date||"").localeCompare(String(x.date||"")));
-  const actN=waitMe.length+pend.length+todo.length;
-  /* 2. new in the last 7 days */
-  const newQ=S.quotes.filter(q=>ids.has(q.supplierId)&&num(q.createdAt)&&now-num(q.createdAt)<wk).sort((x,y)=>num(y.createdAt)-num(x.createdAt));
-  const newS=sups.filter(s=>{ const t=addedAt(s); return t&&now-t<wk; }).sort((x,y)=>addedAt(y)-addedAt(x));
-  const QSRC={"wechat-chat":"WeChat chat","wechat-file":"WeChat file","wechat":"WeChat","email":"Email","alibaba":"Alibaba","alibaba-chat":"Alibaba chat","alibaba-file":"Alibaba file","globalsources-chat":"Global Sources"};
-  const qRow=q=>{ const ls=arr(q.lines).filter(l=>l&&(l.item||l.price)); const ps=ls.map(l=>toUsd(l.price,q.currency)).filter(v=>v!=null); const lo=ps.length?Math.min(...ps):null, hi=ps.length?Math.max(...ps):null;
-    const price=lo==null?"":lo===hi?usd(lo):`${usd(lo)}–${usd(hi)}`;
-    const what=ls.length===1?shortItem(ls[0].item):`${ls.length} items: ${ls.slice(0,2).map(l=>shortItem(l.item)).join("; ")}${ls.length>2?"…":""}`;
-    return `<button data-open="${esc(q.supplierId)}"><span class="t">${esc(nm(S.sup.get(q.supplierId)))}</span><span class="f">${price}</span><span class="m">${esc(what.slice(0,150))} · ${esc([QSRC[q.source]||q.source||"",q.incoterm||"",rel(num(q.createdAt))].filter(Boolean).join(" · "))}</span></button>`; };
-  /* 3. quotes that work, by customer */
+  const openS=smp.filter(x=>!["Approved","Rejected"].includes(x.status||"Requested"));
+  const todo=todoItems(shown); const expiring=todo.filter(i=>i.kind==="quote");
+  const pc=n=>n.toLocaleString("en-US");
+  const kpi=(v,l,d,act,alert)=>`<button class="kpi${alert?" alert":""}" data-dgo="${act}"><div class="v">${pc(v)}</div><div class="l">${l}</div>${d?`<div class="d">${d}</div>`:""}</button>`;
+  // categories (families)
+  const fam=new Map(); sups.forEach(s=>{ const seen=new Set(arr(s.categories).map(famOf)); if(!seen.size) seen.add("No category"); seen.forEach(f=>fam.set(f,(fam.get(f)||0)+1)); });
+  const famTop=[...fam].sort((a,b)=>b[1]-a[1]).slice(0,10), famMax=Math.max(1,...famTop.map(x=>x[1]));
+  const src=new Map(); sups.forEach(s=>srcOf(s).forEach(x=>src.set(x,(src.get(x)||0)+1)));
+  const srcL=[...src].sort((a,b)=>b[1]-a[1]), srcMax=Math.max(1,...srcL.map(x=>x[1]));
+  const hb=(rows,max,attr)=>`<div class="hb">${rows.map(([k,n])=>`<span class="lab" ${attr?`${attr}="${esc(k)}"`:""} title="${esc(k)}">${esc(k)}</span><span class="trk" title="${esc(k)}: ${n}"><i style="width:${(n/max*100).toFixed(1)}%"></i></span><span class="n">${n}</span>`).join("")}</div>`;
+  // fit by customer (product-typed lines only)
   const typed=lines.filter(x=>x.ty&&!x.ty.a);
-  const untagged=lines.filter(x=>!x.ty).length;
   const cs=customers().length?customers():[null];
-  const fitRows=cs.map(c=>{ const k={ok:0,tight:0,over:0,none:0}; typed.forEach(x=>{ const f=fitFor(x.q,x.l,x.ty.t,c===null?undefined:c); k[!f||f.retail==null?"none":f.st]++; }); return [c,k]; });
-  const fitHtml=fitRows.map(([c,k])=>{ const n=c?c.name:"Your customer"; const tot=Math.max(1,k.ok+k.tight+k.over+k.none);
-    return `<button class="custrow" data-dfit="${esc(c?c.name:"")}" title="Show the quotes that pass for ${esc(n)}"><span class="cn">${esc(shortCust(n))}</span><span class="cv">${pc(k.ok)}</span><span class="cl">pass${k.tight?` · ${pc(k.tight)} tight`:""} · ${pc(k.over)} over</span><span class="stk" role="img" aria-label="${esc(n)}: ${k.ok} pass, ${k.tight} tight, ${k.over} over, ${k.none} no target retail">${["ok","tight","over","none"].filter(x=>k[x]).map(x=>`<i class="${x}" style="width:${(k[x]/tot*100).toFixed(1)}%"></i>`).join("")}</span></button>`; }).join("");
-  const fitLegend=`<div class="legend"><span><b style="background:var(--ok)"></b>Pass</span><span><b style="background:var(--warn)"></b>Tight</span><span><b style="background:var(--stamp)"></b>Over</span><span><b style="background:var(--sunk)"></b>No target retail</span></div>`;
+  const fitRows=cs.map(c=>{ const k={ok:0,tight:0,over:0,none:0}; typed.forEach(x=>{ const f=fitFor(x.q,x.l,x.ty.t,c===null?undefined:c); k[!f||f.retail==null?"none":f.st]++; }); return [c?c.name:"Your customer",k]; });
+  const fitHtml=fitRows.map(([n,k])=>{ const tot=Math.max(1,k.ok+k.tight+k.over+k.none); return `<div class="fitrow"><span class="lab" title="${esc(n)}">${esc(shortCust(n))}</span><span class="stk" role="img" aria-label="${esc(n)}: ${k.ok} fit, ${k.tight} tight, ${k.over} over, ${k.none} no target">${["ok","tight","over","none"].filter(x=>k[x]).map(x=>`<i class="${x}" style="width:${(k[x]/tot*100).toFixed(1)}%" title="${esc(n)}: ${k[x]} ${x==="ok"?"fit":x==="none"?"no target retail":x}"></i>`).join("")}</span></div>`; }).join("");
+  const fitLegend=`<div class="legend"><span><b style="background:var(--ok)"></b>Fits</span><span><b style="background:var(--warn)"></b>Tight</span><span><b style="background:var(--stamp)"></b>Over</span><span><b style="background:var(--sunk)"></b>No target retail</span></div>`;
+  // best fits by product type for active customer
   const byType=new Map(); typed.forEach(x=>{ const f=fitFor(x.q,x.l,x.ty.t); if(!f||f.retail==null) return; const g=byType.get(x.ty.t)||{n:0,ok:0,best:null}; g.n++; if(f.st==="ok") g.ok++; if(!g.best||f.lc.total<g.best.f.lc.total) g.best={f,x}; byType.set(x.ty.t,g); });
-  const typeL=[...byType].sort((x,y)=>y[1].ok-x[1].ok||y[1].n-x[1].n).slice(0,8);
-  /* 4. open programs */
-  const HOUSEKEEPING=new Set(["Need contact info","2025","2026"]);
-  const qBySup=new Map(); for(const q of S.quotes){ if(!ids.has(q.supplierId)) continue; const g=qBySup.get(q.supplierId)||[]; g.push(q); qBySup.set(q.supplierId,g); }
-  const progs=allProjects().filter(p=>!HOUSEKEEPING.has(p)).map(p=>{ const fs=sups.filter(s=>arr(s.projects).includes(p)); const quoting=fs.filter(s=>qBySup.has(s.id));
-    let items=0, low=null, lowS=null; quoting.forEach(s=>qBySup.get(s.id).forEach(q=>arr(q.lines).forEach(l=>{ if(!l||!(l.item||l.price)) return; items++; const v=toUsd(l.price,q.currency); if(v!=null&&v>0&&(low==null||v<low)){ low=v; lowS=s; } })));
-    return {p,n:fs.length,quoting:quoting.length,items,low,lowS,wait:fs.filter(s=>s.replyWho==="them").length}; }).filter(x=>x.n).sort((x,y)=>y.n-x.n);
-  const rfqs=[...arr(S.rfqs)].filter(r=>r.kind!=="sample").sort((x,y)=>(num(y.updatedAt)||0)-(num(x.updatedAt)||0));
-  /* 5. quotes needing cleanup */
-  const clean=[]; for(const q of S.quotes){ if(!ids.has(q.supplierId)) continue; const ls=arr(q.lines).filter(l=>l&&(l.item||l.price)); if(!ls.length) continue;
-    const fl=[]; const e=q.validUntil?Date.parse(q.validUntil):NaN;
-    if(!isNaN(e)&&e<now) fl.push(["exp","Expired"]);
-    if(!q.incoterm) fl.push(["","No incoterm"]);
-    const noMoq=ls.filter(l=>!String(l.moq||"").trim()).length; if(noMoq) fl.push(["",noMoq===ls.length?"No MOQ":`No MOQ on ${noMoq} of ${ls.length}`]);
-    if(q.dateEstimated) fl.push(["","Date estimated"]);
-    if(/quote-sheet photo|small image|price table image|may be misread/i.test(String(q.notes||""))) fl.push(["soon","Read from a photo"]);
-    const noPrice=ls.filter(l=>num(l.price)==null).length; if(noPrice) fl.push(["",`${noPrice} without a price`]);
-    if(fl.length) clean.push({q,ls,fl,w:fl.reduce((a,f)=>a+(f[0]==="exp"?4:f[0]==="soon"?3:1),0),t:Date.parse(q.date||"")||num(q.createdAt)||0}); }
-  const cleanRecent=clean.filter(c=>now-c.t<60*864e5).sort((x,y)=>y.w-x.w||y.t-x.t);
-  const cnt=lab=>clean.filter(c=>c.fl.some(f=>f[1].startsWith(lab))).length;
-  /* 6. quick stats */
-  let last=0; for(const s of sups){ const u=num(s.updatedAt)||0; if(u>last) last=u; } for(const q of S.quotes){ const u=num(q.updatedAt)||num(q.createdAt)||0; if(u>last) last=u; }
-  const lastTxt=last?new Date(last).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"—";
-  const sec=(n,title,sub)=>`<h2 class="dsec"><span class="dn">${n}</span>${title}${sub?`<span class="ds">${sub}</span>`:""}</h2>`;
-  const empty=t=>`<div class="note">${t}</div>`;
+  const typeL=[...byType].sort((a,b)=>b[1].ok-a[1].ok||b[1].n-a[1].n).slice(0,8);
+  const untagged=lines.filter(x=>!x.ty).length;
+  const pipe=STATUSES.map(st=>[st,smp.filter(x=>(x.status||"Requested")===st).length]);
+  const rel=t=>{ const d=Math.floor((now-t)/864e5); return d<=0?"today":d===1?"yesterday":`${d} days ago`; };
   L.innerHTML=`<div class="dash">
-    ${sec(1,"Needs your action",actN?`${pc(actN)} open`:"")}
-    <div class="panels">
-      <div class="panel"><h3>Waiting on your reply${waitMe.length?` · ${waitMe.length}`:""}</h3>${waitMe.length?`<div class="dl">${waitMe.slice(0,7).map(replyRow).join("")}</div>${more(waitMe.length,7,"r","Replies")}`:empty("Nobody is waiting on you.")}</div>
-      <div class="panel"><h3>Quotes and answers you're waiting for${waitThem.length?` · ${waitThem.length}`:""}</h3>${waitThem.length?`<div class="dl">${waitThem.slice(0,7).map(replyRow).join("")}</div>${more(waitThem.length,7,"r","Replies")}`:empty("You aren't waiting on any factory.")}</div>
-      <div class="panel"><h3>Not imported yet${pend.length?` · ${pend.length}`:""}</h3><div class="sub">Files and unread chats or emails the last WeChat and Outlook update left out</div>${pend.length?`<div class="dl">${pend.map(x=>`<button ${x.supplierId&&S.sup.has(x.supplierId)?`data-open="${esc(x.supplierId)}"`:"disabled"}><span class="t">${esc(x.title||"Item")}</span><span class="f note">${esc(x.date||"")}</span>${x.note?`<span class="m">${esc(x.note)}</span>`:""}</button>`).join("")}</div>`:empty("Everything from the last update is in.")}</div>
-      <div class="panel"><h3>Samples on the way${openS.length?` · ${openS.length}`:""}</h3>${openS.length?`<div class="dl">${openS.slice(0,7).map(x=>{ const d=daysSince(x.requested); return `<button data-open="${esc(x.supplierId)}"><span class="t">${esc(x.item||"Sample")}</span><span class="f flag ${d!=null&&d>=SAMPLE_WAIT_DAYS*2?"exp":d!=null&&d>=SAMPLE_WAIT_DAYS?"soon":""}">${d!=null?`${d}d`:""}</span><span class="m">${esc([nm(S.sup.get(x.supplierId)),x.status||"Requested",x.tracking?`Tracking ${x.tracking}`:"No tracking number"].join(" · "))}</span></button>`; }).join("")}</div>${more(openS.length,7,"s","Samples")}`:empty("No samples in transit.")}</div>
-      <div class="panel"><h3>Follow-ups and expiring quotes${todo.length?` · ${todo.length}`:""}</h3>${todo.length?`<div class="dl">${todo.slice(0,7).map(i=>`<button data-open="${esc(i.sid)}"><span class="t">${esc(i.title)}</span><span class="f flag ${i.cls}">${esc(i.badge)}</span>${i.sub?`<span class="m">${esc(String(i.sub).slice(0,120))}</span>`:""}</button>`).join("")}</div>${more(todo.length,7,"t","To do")}`:empty("Nothing due.")}</div>
+    <div class="kpis">
+      ${kpi(sups.length,"Factories",newWk.length?`+${newWk.length} this week`:"","f")}
+      ${kpi(lines.length,"Quoted items",`${new Set(lines.map(x=>x.q.supplierId)).size} factories quoting`,"q")}
+      ${kpi(waitMe.length,"Waiting on your reply",waitThem.length?`${waitThem.length} waiting on factories`:"","r",waitMe.some(s=>(daysSince(s.replySince)||0)>=3))}
+      ${kpi(openS.length,"Samples in progress",smp.length?`${smp.length} total`:"","s")}
+      ${kpi(todo.length,"To do",expiring.length?`${expiring.length} quote${expiring.length>1?"s":""} expiring`:"","t",todo.some(i=>i.cls==="exp"))}
     </div>
-    ${sec(2,"New in the last 7 days",`${pc(newQ.length)} quote${newQ.length===1?"":"s"} · ${pc(newS.length)} factor${newS.length===1?"y":"ies"}`)}
     <div class="panels">
-      <div class="panel"><h3>New quotes</h3>${newQ.length?`<div class="dl">${newQ.slice(0,10).map(qRow).join("")}</div>${more(newQ.length,10,"q","Quotes")}`:empty("No new quotes in the last 7 days.")}</div>
-      <div class="panel"><h3>New factories</h3>${newS.length?`<div class="dl">${newS.slice(0,8).map(s=>`<button data-open="${esc(s.id)}"><span class="t">${esc(nm(s))}</span><span class="f note">${rel(addedAt(s))}</span><span class="m">${esc([srcOf(s)[0],arr(s.categories)[0],s.products].filter(Boolean).join(" · ").slice(0,110))}</span></button>`).join("")}</div>${more(newS.length,8,"f","Factories")}`:empty("No new factories in the last 7 days.")}</div>
-    </div>
-    ${sec(3,"Quotes that work, by customer",`${pc(typed.length)} quoted items with a product type${untagged?` · ${pc(untagged)} not sorted yet`:""}`)}
-    <div class="panels">
-      <div class="panel"><h3>Pass or fail</h3><div class="sub">Tap a customer to see the quotes that pass</div>${fitHtml}${fitLegend}</div>
-      <div class="panel"><h3>Best fits by product type</h3><div class="sub">For ${esc(activeCust()?.name||"your customer")} · lowest landed cost shown</div>${typeL.length?`<div class="dl">${typeL.map(([t,g])=>`<button data-dtype="${esc(t)}"><span class="t">${esc(t)}</span><span class="f">${g.ok}/${g.n} pass</span><span class="m">Best ${usd(g.best.f.lc.total)} landed · ${esc(S.sup.get(g.best.x.q.supplierId)?.company||"")} · ${Math.round(g.best.f.margin*100)}% margin</span></button>`).join("")}</div>`:empty("Set target retail prices in the Quotes tab to see which quotes pass.")}</div>
-    </div>
-    ${sec(4,"Open programs")}
-    <div class="panels">
-      <div class="panel"><h3>By project</h3>${progs.length?`<div class="dl">${progs.map(x=>`<button data-dproj="${esc(x.p)}"><span class="t">${esc(x.p)}</span><span class="f">${x.quoting}/${x.n} quoting</span><span class="m">${esc([`${pc(x.items)} quoted item${x.items===1?"":"s"}`,x.low!=null?`lowest ${usd(x.low)} from ${nm(x.lowS)}`:"",x.n-x.quoting?`${x.n-x.quoting} not quoted yet`:"",x.wait?`${x.wait} owe you an answer`:""].filter(Boolean).join(" · "))}</span></button>`).join("")}</div>`:empty("No factories are tagged with a project yet. Open a factory, tap Edit, and pick a project (for example Tie-down straps) to see it here.")}</div>
-      <div class="panel"><h3>Saved RFQs${rfqs.length?` · ${rfqs.length}`:""}</h3>${rfqs.length?`<div class="dl">${rfqs.slice(0,8).map(r=>{ const sid=r.supplierId||arr(r.supplierIds)[0]; return `<button ${sid&&S.sup.has(sid)?`data-open="${esc(sid)}"`:"disabled"}><span class="t">${esc(r.title||"RFQ")}</span><span class="f note">${arr(r.items).length} item${arr(r.items).length===1?"":"s"}</span><span class="m">${esc([nm(S.sup.get(sid)),r.qty,r.due?`due ${r.due}`:""].filter(Boolean).join(" · "))}</span></button>`; }).join("")}</div>`:empty("No saved RFQs.")}</div>
-    </div>
-    ${sec(5,"Quotes needing cleanup",clean.length?`${pc(clean.length)} quotes`:"")}
-    <div class="panels">
-      <div class="panel"><h3>Recent quotes to fix first</h3><div class="sub">From the last 60 days, worst first</div>${cleanRecent.length?`<div class="dl">${cleanRecent.slice(0,10).map(c=>`<button data-open="${esc(c.q.supplierId)}"><span class="t">${esc(nm(S.sup.get(c.q.supplierId)))}</span><span class="f note">${esc(c.q.date||"")}</span><span class="m">${esc(shortItem(c.ls[0].item))}${c.ls.length>1?` +${c.ls.length-1} more`:""}</span><span class="m">${c.fl.map(f=>`<span class="flag ${f[0]}">${esc(f[1])}</span>`).join(" · ")}</span></button>`).join("")}</div>`:empty("Recent quotes are complete.")}</div>
-      <div class="panel"><h3>What's missing, all quotes</h3><div class="mini">${[["Expired","Past their valid-until date"],["No incoterm","No incoterm (FOB, EXW…)"],["No MOQ","Missing an MOQ"],["Read from a photo","Read from a photo or small image"],["Date estimated","Date is an estimate"]].map(([k,l])=>`<div><span class="v">${pc(cnt(k))}</span><span class="l">${l}</span></div>`).join("")}<div><span class="v">${pc(untagged)}</span><span class="l">Items with no product type</span></div></div></div>
-    </div>
-    ${sec(6,"Quick stats")}
-    <div class="statrow"><button data-dgo="f"><b>${pc(sups.length)}</b> factories</button><button data-dgo="q"><b>${pc(new Set(lines.map(x=>x.q.id)).size)}</b> quotes</button><button data-dgo="q"><b>${pc(lines.length)}</b> quoted items</button><button data-dgo="q"><b>${pc(new Set(lines.map(x=>x.q.supplierId)).size)}</b> factories quoting</button><span>Last update <b>${esc(lastTxt)}</b></span></div>
-  </div>`;
+      <div class="panel"><h3>Waiting on you</h3>${waitMe.length?`<div class="dl">${waitMe.slice(0,7).map(s=>{ const r=replyState(s); return `<button data-open="${esc(s.id)}"><span class="t">${esc(s.company||s.companyChinese||"Factory")}</span><span class="f flag ${r.cls}">${r.d!=null?`${r.d}d`:""}</span>${s.replyNote?`<span class="m">${esc(s.replyNote)}</span>`:""}</button>`; }).join("")}</div>${waitMe.length>7?`<button class="btn sm ghost" data-dgo="r" style="margin-top:8px">All ${waitMe.length} in Replies</button>`:""}`:`<div class="note">Nobody is waiting on you.</div>`}</div>
+      <div class="panel"><h3>Quote fit by customer</h3><div class="sub">${pc(typed.length)} quoted items with a product type${untagged?` · ${pc(untagged)} not sorted yet`:""}</div>${fitHtml}${fitLegend}</div>
+      <div class="panel"><h3>Best fits by product type</h3><div class="sub">For ${esc(activeCust()?.name||"your customer")} · lowest landed cost shown</div>${typeL.length?`<div class="dl">${typeL.map(([t,g])=>`<button data-dtype="${esc(t)}"><span class="t">${esc(t)}</span><span class="f">${g.ok}/${g.n} fit</span><span class="m">Best ${usd(g.best.f.lc.total)} landed · ${esc(S.sup.get(g.best.x.q.supplierId)?.company||"")} · ${Math.round(g.best.f.margin*100)}% margin</span></button>`).join("")}</div>`:`<div class="note">Set target retail prices in the Quotes tab to see which quotes fit.</div>`}</div>
+      <div class="panel"><h3>Factories by category</h3>${hb(famTop,famMax,"data-dcat")}</div>
+      <div class="panel"><h3>Where they came from</h3>${hb(srcL,srcMax,"data-dsrc")}
+        <h3 style="margin-top:16px">Samples</h3><div class="pipe">${pipe.map(([st,n])=>`<div><div class="v">${n}</div><div class="l">${st}</div></div>`).join("")}</div></div>
+      <div class="panel"><h3>New this week</h3>${newWk.length?`<div class="dl">${newWk.slice(0,8).map(s=>`<button data-open="${esc(s.id)}"><span class="t">${esc(s.company||s.companyChinese||"Factory")}</span><span class="f note">${rel(addedAt(s))}</span><span class="m">${esc([srcOf(s)[0],arr(s.categories)[0],s.products].filter(Boolean).join(" · ").slice(0,110))}</span></button>`).join("")}</div>${newWk.length>8?`<div class="note" style="margin-top:6px">+${newWk.length-8} more in Factories</div>`:""}`:`<div class="note">No new factories in the last 7 days.</div>`}</div>
+    </div></div>`;
 }
 /* ---------- who owes whom a reply ---------- */
 // replyWho "me" = the factory is waiting on you; "them" = you're waiting on the factory
@@ -2711,8 +2646,6 @@ $("#list").addEventListener("click",e=>{
   { const c=e.target.closest("[data-dcat]"); if(c){ S.view="f"; S.cat=c.dataset.dcat==="No category"?"All":c.dataset.dcat; render(); window.scrollTo(0,0); return; } }
   { const c=e.target.closest("[data-dsrc]"); if(c){ S.view="f"; S.src=c.dataset.dsrc; render(); window.scrollTo(0,0); return; } }
   { const c=e.target.closest("[data-dtype]"); if(c){ S.view="q"; S.qtype=c.dataset.dtype; render(); window.scrollTo(0,0); return; } }
-  { const c=e.target.closest("[data-dfit]"); if(c){ if(c.dataset.dfit){ S.cust=c.dataset.dfit; try{ localStorage.setItem("sb-cust",S.cust); }catch{} } S.view="q"; S.qtype="All"; S.qfit="ok"; render(); window.scrollTo(0,0); return; } }
-  { const c=e.target.closest("[data-dproj]"); if(c){ S.view="f"; S.proj=c.dataset.dproj; render(); window.scrollTo(0,0); return; } }
   { const rb=e.target.closest("[data-rdo]"); if(rb){ e.stopPropagation(); return setReply(rb.dataset.rid,rb.dataset.rdo); } }
   { const rd=e.target.closest("[data-rdraft]"); if(rd){ e.stopPropagation(); return openMessage(rd.dataset.rdraft); } }
   if(e.target.closest("input,select,label,textarea")) return;
@@ -3371,8 +3304,7 @@ render();
   db.collection("suppliers").onSnapshot(snap=>{ S.sup=new Map(snap.docs.map(x=>[x.id,{id:x.id,...x.data()}])); S.loaded.s=true; render(); },
     e=>{ $("#list").innerHTML=`<div class="empty"><strong>Couldn't load factories</strong><span>Reload the page to try again.</span></div>`; });
   db.collection("quotes").onSnapshot(snap=>{ S.quotes=snap.docs.map(x=>({id:x.id,...x.data()})); S.loaded.q=true; render(); }, ()=>{});
-  db.collection("rfqs").onSnapshot(snap=>{ S.rfqs=snap.docs.map(x=>({id:x.id,...x.data()})); if(S.view==="h") render(); }, ()=>{});
-  db.collection("pending").onSnapshot(snap=>{ S.pending=snap.docs.map(x=>({id:x.id,...x.data()})); if(S.view==="h") render(); }, ()=>{});
+  db.collection("rfqs").onSnapshot(snap=>{ S.rfqs=snap.docs.map(x=>({id:x.id,...x.data()})); }, ()=>{});
   db.collection("samples").onSnapshot(snap=>{ S.samples=snap.docs.map(x=>({id:x.id,...x.data()})); render(); }, ()=>{});
   db.collection("storefinds").onSnapshot(snap=>{ S.finds=snap.docs.map(x=>({id:x.id,...x.data()})); const h=document.getElementById("simhist"); if(h) h.innerHTML=findHistHtml(); compRefresh(); }, ()=>{});
   db.collection("docs").onSnapshot(snap=>{ S.docs=snap.docs.map(x=>({id:x.id,...x.data()})); render(); if(detailId) refreshDocs(detailId); }, ()=>{});
