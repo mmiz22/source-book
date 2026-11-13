@@ -556,6 +556,38 @@ main .wrap{padding-bottom:150px}
 .srow .what{font-size:.8rem}
 .srow:hover{box-shadow:none;background:var(--hover)}
 
+/* product grid: tiles with a large photo and price, used for search results and the Quotes tab */
+.cmp{display:inline-flex;align-items:center;gap:5px;font-size:.74rem;color:var(--muted);cursor:pointer;width:max-content}
+.cmp input{width:15px;height:15px;accent-color:var(--accent)}
+.pgridmode .pgrid,.pgridmode section.tgroup{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:10px;align-items:stretch}
+.pgridmode section.tgroup>*:not(.qrow2){grid-column:1/-1}
+.pgridmode .qrow2{display:flex;flex-direction:column;gap:4px;padding:10px;border-radius:10px;background:var(--surface);box-shadow:none;align-items:stretch;min-width:0}
+.pgridmode .qrow2:hover{background:var(--surface);box-shadow:var(--shadow-hi)}
+.pgridmode .qrow2 .pimg,.pgridmode .qrow2 .ph{width:100%;height:auto;aspect-ratio:1;border-radius:8px;order:0;border:0;background:#fff}
+.pgridmode .qrow2 .ph{background:var(--sunk);aspect-ratio:2.4;display:grid;place-items:center}
+.pgridmode .qrow2 .ph::after{content:"No photo";color:var(--muted);font-size:.72rem}
+.pgridmode .qrow2 .nums{order:1;text-align:left;justify-items:start;font-family:var(--body);font-size:1.15rem;font-weight:600;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+.pgridmode .qrow2 .who{order:2;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:500;font-size:.86rem;line-height:1.3}
+.pgridmode .qrow2 .what{order:3;font-size:.78rem;-webkit-line-clamp:2}
+.pgridmode .qrow2 .meta2{order:4;font-family:var(--body);font-size:.72rem}
+.pgridmode .qrow2 .cmp{order:5;margin-top:auto;padding-top:4px}
+.pgridmode .qrow2.best{box-shadow:0 0 0 1.5px var(--ok)}
+.psearch{display:grid;gap:14px;min-width:0}
+.pfilters{background:var(--surface);border-radius:10px;padding:10px 12px;align-self:start}
+.pfilters summary{cursor:pointer;font-weight:600;font-size:.9rem}
+.pfilters .fgrp{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.pfilters .fgrp .label{flex-basis:100%;text-transform:none;letter-spacing:0;font-size:.76rem;font-weight:500}
+.fopt{border:0;background:var(--sunk);border-radius:6px;padding:5px 9px;font-size:.78rem;cursor:pointer;display:inline-flex;gap:6px;align-items:center;text-align:left}
+.fopt span{color:var(--muted);font-size:.7rem}
+.fopt[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)} .fopt[aria-pressed="true"] span{color:inherit;opacity:.85}
+@media (min-width:1100px){ .psearch.grid{grid-template-columns:230px minmax(0,1fr);align-items:start} .psearch.grid .pfilters{position:sticky;top:120px} .psearch.grid .pfilters summary{list-style:none;pointer-events:none} .psearch.grid .pfilters summary::-webkit-details-marker{display:none} .psearch.grid .fgrp{flex-direction:column;flex-wrap:nowrap;gap:4px} .psearch.grid .fopt{justify-content:space-between;background:transparent;padding:5px 8px} .psearch.grid .fopt:hover{background:var(--hover)} .psearch.grid .fopt[aria-pressed="true"]{background:var(--accent-soft);color:var(--fg);font-weight:600} }
+#cmpbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 68px);z-index:9;background:var(--surface);border-radius:999px;padding:6px 8px;display:flex;gap:6px;box-shadow:var(--shadow-hi)}
+@media (min-width:980px){#cmpbar{bottom:18px}}
+.cmptable{border-collapse:separate;border-spacing:0;width:100%;background:var(--surface);border-radius:10px}
+.cmptable th,.cmptable td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left;font-size:.9rem;min-width:150px;max-width:260px;overflow-wrap:anywhere}
+.cmptable th{color:var(--muted);font-weight:500;min-width:96px;width:96px;white-space:nowrap}
+.cmptable tr:last-child th,.cmptable tr:last-child td{border-bottom:0}
+
 </style>
 
 <header class="top">
@@ -944,6 +976,7 @@ function renderQuotes(L,shown){
         <div class="who">${esc(r.s?.company||r.s?.companyChinese||"Unknown factory")}</div>
         <div class="nums"><span title="${r.f?.lc?esc("Landed: "+lcTitle(r.f.lc)):"Factory price"}">${r.f?.lc?usd(r.f.lc.total):money(r.l.price,r.q.currency)}</span>${real?(customers().length>1?fitChips(r.q,r.l,t):fitBadge(r.f)):""}</div>
         <div class="what">${esc(r.l.item||"Item")}</div>
+        ${cmpBox(r.q,r.l)}
         <div class="meta2">${esc([`${money(r.l.price,r.q.currency)} ${r.q.incoterm||""}`.trim(), r.l.moq?`MOQ ${r.l.moq}`:"", r.q.date].filter(Boolean).join(" · "))}${(()=>{ const o=originalsFor(r.q)[0]; return o?` <a class="linkbtn retype" href="${blobUrl(o.file)}" data-name="${esc(o.name)}">Original</a>`:""; })()}${canWrite&&r.l.item?` <button class="linkbtn retype" data-retype="${esc(r.l.item)}">Change type</button>`:""}</div>
       </div>`).join("")}
       ${g.length>show.length?`<button class="btn sm ghost more" data-more="${esc(t)}">Show all ${g.length}</button>`:""}</section>`;
@@ -1011,15 +1044,44 @@ function sRun(q){ const I=sIndex(), P=sParse(q), alt=new Map(); if(!P.toks.lengt
   return {...R,P,fixed};
 }
 S.ssort=(()=>{ try{ return localStorage.getItem("sb-ssort")||"price"; }catch{ return "price"; } })(); S.sall=new Set();
+S.pview=(()=>{ try{ return localStorage.getItem("sb-pview")||"grid"; }catch{ return "grid"; } })(); S.sf={type:"",price:"",terms:"",photo:"",recent:""};
+/* compare up to four quoted items side by side */
+S.cmp=new Map();
+const cmpKey=(q,l)=>q.id+"|"+arr(q.lines).indexOf(l);
+function cmpBox(q,l){ const k=cmpKey(q,l); return `<label class="cmp"><input type="checkbox" data-cmp="${esc(k)}" ${S.cmp.has(k)?"checked":""}> Compare</label>`; }
+function cmpBar(){ let b=$("#cmpbar"); if(!S.cmp.size){ b?.remove(); return; } if(!b){ b=document.createElement("div"); b.id="cmpbar"; document.body.append(b); }
+  b.innerHTML=`<button class="btn primary sm" id="cmpgo" ${S.cmp.size<2?"disabled":""}>Compare ${S.cmp.size} item${S.cmp.size===1?"":"s"}</button><button class="btn sm ghost" id="cmpclr">Clear</button>`;
+  b.querySelector("#cmpgo").onclick=openCompare; b.querySelector("#cmpclr").onclick=()=>{ S.cmp.clear(); cmpBar(); document.querySelectorAll("[data-cmp]").forEach(c=>c.checked=false); }; }
+function openCompare(){ const items=[...S.cmp.keys()].map(k=>{ const [qid,i]=k.split("|"); const q=S.quotes.find(x=>x.id===qid), l=q&&arr(q.lines)[+i]; return q&&l?{q,l,s:S.sup.get(q.supplierId)}:null; }).filter(Boolean); if(items.length<2) return;
+  const low=Math.min(...items.map(x=>num(x.l.price)).filter(v=>v>0));
+  const rows=[["",x=>x.l.img?`<img class="pimg" style="width:120px;height:120px" src="${esc(x.l.img)}" alt="">`:`<div class="ph" style="width:120px;height:120px;border-radius:8px;background:var(--sunk)"></div>`],
+    ["Item",x=>esc(x.l.item||"")],["Factory price",x=>`<strong style="font-size:1.1rem${num(x.l.price)===low?";color:var(--ok)":""}">${money(x.l.price,x.q.currency)}</strong>${num(x.l.price)===low?` <span class="note">lowest</span>`:""}`],["Terms",x=>esc([x.q.incoterm,x.q.port].filter(Boolean).join(" ")||"Not stated")],
+    ["Landed",x=>{ const f=fitFor(x.q,x.l); return f?.lc?usd(f.lc.total):"—"; }],["MOQ",x=>esc(x.l.moq||"Not stated")],["Factory",x=>`<button class="linkbtn" data-cmpopen="${esc(x.q.supplierId)}">${esc(x.s?.company||x.s?.companyChinese||"Unknown factory")}</button>`],
+    ["Quote date",x=>esc(x.q.date||"")],["Type",x=>{ const t=typeOf(x.l); return esc(t&&!t.a?t.t:""); }],["Model",x=>esc(x.l.sku||"")],["Note",x=>esc(x.l.note||"")]];
+  openSheet("Compare items",`<div style="overflow-x:auto"><table class="cmptable"><tbody>${rows.map(([h,f])=>`<tr><th scope="row">${h}</th>${items.map(x=>`<td>${f(x)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`,
+    body=>{ body.querySelectorAll("[data-cmpopen]").forEach(b=>b.onclick=()=>{ closeSheet(); setTimeout(()=>openFactory(b.dataset.cmpopen),30); }); }); }
 function renderSearch(L){
-  const R=sRun(S.q); document.body.classList.remove("tbl");
-  $("#cats").innerHTML=`<span class="vtog" role="group" aria-label="Sort products">${[["price","Cheapest"],["new","Newest"],["best","Best match"]].map(([k,t])=>`<button data-ssort="${k}" aria-pressed="${S.ssort===k}">${t}</button>`).join("")}</span><button class="chip" data-sclear="1">✕ Clear search</button>`;
+  const R=sRun(S.q); const grid=S.pview==="grid"; document.body.classList.toggle("tbl",grid);
+  $("#cats").innerHTML=`<span class="vtog" role="group" aria-label="Product layout"><button data-pview="grid" aria-pressed="${grid}">Grid</button><button data-pview="list" aria-pressed="${!grid}">List</button></span><span class="vtog" role="group" aria-label="Sort products">${[["price","Cheapest"],["new","Newest"],["best","Best match"]].map(([k,t])=>`<button data-ssort="${k}" aria-pressed="${S.ssort===k}">${t}</button>`).join("")}</span><button class="chip" data-sclear="1">✕ Clear search</button>`;
   if(!R){ L.innerHTML=`<div class="empty"><strong>Keep typing</strong><span>Try a product, a factory, a city, or add a price like “under 3”.</span></div>`; return; }
   const strong=x=>R.P.toks.length&&x[0]>=4.6*R.P.toks.length?1:0;   // every word is in the product's own name or type
+  const F=S.sf, PR={u1:[0,1],"1-2":[1,2],"2-5":[2,5],"5-10":[5,10],o10:[10,1e9]}, cut=new Date(Date.now()-183*864e5).toISOString().slice(0,10);
+  const passBut=(x,skip)=>{ const e=x[1]; if(skip!=="type"&&F.type&&e.t!==F.type) return false; if(skip!=="price"&&F.price){ const [a,b]=PR[F.price]; if(!(e.p!=null&&e.p>=a&&e.p<b)) return false; }
+    if(F.terms&&String(e.q.incoterm||"").toUpperCase()!==F.terms) return false; if(F.photo&&!e.l.img) return false; if(F.recent&&String(e.q.date||"")<cut) return false; return true; };
+  const tcount=new Map(); R.prods.filter(x=>passBut(x,"type")).forEach(x=>{ const t=x[1].t||"Not typed"; tcount.set(t,(tcount.get(t)||0)+1); });
+  const allProds=R.prods; R.prods=R.prods.filter(x=>passBut(x)&&(!F.type||F.type!=="Not typed"||!x[1].t));
+  const nF=[F.type,F.price,F.terms,F.photo,F.recent].filter(Boolean).length;
+  const opt=(k,v,t,n)=>`<button class="fopt" data-sf="${k}" data-v="${esc(v)}" aria-pressed="${String(F[k]||"")===String(v)}">${esc(t)}${n!=null?`<span>${n}</span>`:""}</button>`;
+  const filters=allProds.length?`<details class="pfilters"${nF||window.innerWidth>=1100?" open":""}><summary>Filters${nF?` · ${nF} on`:""}</summary>
+      <div class="fgrp"><div class="label">Price (factory)</div>${opt("price","","Any price")}${opt("price","u1","Under $1")}${opt("price","1-2","$1 to $2")}${opt("price","2-5","$2 to $5")}${opt("price","5-10","$5 to $10")}${opt("price","o10","$10 and up")}</div>
+      <div class="fgrp"><div class="label">Terms</div>${opt("terms","","Any")}${opt("terms","FOB","FOB")}${opt("terms","EXW","EXW")}</div>
+      <div class="fgrp"><div class="label">Show only</div>${opt("photo",F.photo?"":"1","Has a photo")}${opt("recent",F.recent?"":"1","Quoted in last 6 months")}</div>
+      <div class="fgrp"><div class="label">Product type</div>${opt("type","","All types")}${[...tcount].sort((a,b)=>b[1]-a[1]).slice(0,14).map(([t,n])=>opt("type",t,t,n)).join("")}</div>
+      ${nF?`<button class="btn sm ghost" data-sfclear="1">Clear filters</button>`:""}</details>`:"";
   const by=S.ssort, ps=R.prods.slice().sort((a,b)=> by==="best"?(b[0]-a[0])||((a[1].p??1e9)-(b[1].p??1e9)) : by==="new"?(strong(b)-strong(a))||String(b[1].q.date||"").localeCompare(String(a[1].q.date||""))||(b[0]-a[0]) : (strong(b)-strong(a))||((a[1].p>0?a[1].p:1e9)-(b[1].p>0?b[1].p:1e9))||(b[0]-a[0]));
   const top=x=>x.sort((a,b)=>b[0]-a[0]).map(y=>y[1]);
-  const sec=(key,title,items,row,cap)=>{ if(!items.length) return ""; const all=S.sall.has(key), show=all?items.slice(0,400):items.slice(0,cap);
-    return `<div class="qhead">${title} · ${items.length}</div>${show.map(row).join("")}${items.length>show.length?`<button class="btn sm ghost" data-sall="${key}" style="justify-self:start">Show all ${items.length}</button>`:""}`; };
+  const sec=(key,title,items,row,cap,wrap)=>{ if(!items.length) return ""; const all=S.sall.has(key), show=all?items.slice(0,400):items.slice(0,cap);
+    return `<div class="qhead">${title} · ${items.length}</div>${wrap?`<div class="${wrap}">`:""}${show.map(row).join("")}${wrap?"</div>":""}${items.length>show.length?`<button class="btn sm ghost" data-sall="${key}" style="justify-self:start">Show all ${items.length}</button>`:""}`; };
   const price=R.P.min!=null||R.P.max!=null?` · factory price ${R.P.min!=null&&R.P.max!=null?`$${R.P.min} to $${R.P.max}`:R.P.max!=null?`up to $${R.P.max}`:`from $${R.P.min}`}`:"";
   const html=[
     R.fixed.length&&(R.prods.length+R.sups.length+R.docs.length)?`<div class="note">No exact match, so these are the closest results.</div>`:"",
@@ -1028,7 +1090,8 @@ function renderSearch(L){
         <div class="who">${esc(e.l.item)}</div>
         <div class="nums"><span>${money(e.l.price,e.q.currency)}</span><span class="note" style="font-size:.7rem">${esc(e.q.incoterm||"")}</span></div>
         <div class="what">${esc(e.s?.company||e.s?.companyChinese||"Unknown factory")}</div>
-        <div class="meta2">${esc([e.t,e.l.moq?`MOQ ${e.l.moq}`:"",e.q.date].filter(Boolean).join(" · "))}</div></div>`,30),
+        ${cmpBox(e.q,e.l)}
+        <div class="meta2">${esc([e.t,e.l.moq?`MOQ ${e.l.moq}`:"",e.q.date].filter(Boolean).join(" · "))}</div></div>`,grid?48:30,"pgrid"),
     sec("f","Factories",top(R.sups),e=>{ const x=e.s, ini=(x.company||"?").replace(/[^A-Za-z0-9]/g,"").slice(0,2).toUpperCase()||"?", pic=x.cardFront||arr(x.cards)[0]?.file;
       return `<button class="slip${detailId===x.id?" on":""}" data-open="${esc(x.id)}">${pic?`<img class="thumb" src="${blobUrl(pic)}" alt="">`:`<div class="thumb" style="background:${avColor(x.company||x.id)}">${esc(ini)}</div>`}
         <div class="body"><div class="name">${esc(x.company||"Unnamed factory")}</div><div class="meta">${esc([x.contactName,[x.city,x.province].filter(Boolean).join(", ")].filter(Boolean).join(" · "))}</div>${x.products?`<div class="meta">${esc(x.products)}</div>`:""}</div></button>`; },8),
@@ -1036,8 +1099,9 @@ function renderSearch(L){
     sec("s","Samples",top(R.samples),e=>`<button class="slip" data-open="${esc(e.x.supplierId)}"><div class="thumb" style="background:var(--sunk);color:var(--muted)">📦</div><div class="body"><div class="name">${esc(e.x.item||"Sample")}</div><div class="meta">${esc([S.sup.get(e.x.supplierId)?.company,e.x.status||"Requested",e.x.requested].filter(Boolean).join(" · "))}</div></div></button>`,6),
     sec("h","Store finds",top(R.finds),e=>`<div class="slip" style="cursor:default"><div class="thumb" style="background:var(--sunk);color:var(--muted)">🛒</div><div class="body"><div class="name">${esc(e.x.name||e.x.type||"Product")}</div><div class="meta">${esc([e.x.store,e.x.price!=null&&e.x.price!==""?`retail $${e.x.price}`:"",arr(e.x.matches).length?`${arr(e.x.matches).length} factories matched`:"no factory matched"].filter(Boolean).join(" · "))}</div></div></div>`,6)
   ].join("");
-  const none=!R.prods.length;
-  L.innerHTML=(html.trim()?`<div class="stack" style="gap:10px">${html}</div>`:`<div class="empty"><strong>Nothing in your Source Book matches</strong><span>Check the spelling, use fewer words, or look for a new factory below.</span></div>`)
+  const none=!allProds.length;
+  const body=html.trim()||(allProds.length?`<div class="empty"><strong>No products match these filters</strong><span>Clear a filter to see more.</span></div>`:"");
+  L.innerHTML=(body?`<div class="psearch${grid?" grid":""}">${filters}<div class="stack" style="gap:10px;min-width:0">${body}</div></div>`:`<div class="empty"><strong>Nothing in your Source Book matches</strong><span>Check the spelling, use fewer words, or look for a new factory below.</span></div>`)
     +(none&&R.P.toks.length?webBox({name:S.q.replace(/\s+/g," ").trim()}):"");
   const first=L.querySelector(".stack"); if(first) wireDocs(first,null);
 }
@@ -1067,7 +1131,9 @@ function render(){
   const usedProj=[...new Set(sups.flatMap(s=>arr(s.projects)))].sort();
   if(S.proj!=="All" && !usedProj.includes(S.proj)) S.proj="All";
   document.body.classList.toggle("tbl", (S.view==="f" && S.layout==="table") || S.view==="q" || S.view==="h");
-  const qctl = S.view==="q" ? (customers().length?`<select id="custsel" class="chip" aria-label="Customer">${customers().map(c=>`<option ${c.name===activeCust()?.name?"selected":""}>${esc(c.name)}</option>`).join("")}</select>`:"")+`<select id="qtypesel" class="chip" aria-label="Product type"><option value="All">All product types</option>${[...(S.qtypeCounts||new Map())].sort((a,b)=>a[0].localeCompare(b[0])).map(([t,n])=>`<option value="${esc(t)}" ${t===S.qtype?"selected":""}>${esc(t)} (${n})</option>`).join("")}${S.qtype!=="All"&&!(S.qtypeCounts||new Map()).has(S.qtype)?`<option selected>${esc(S.qtype)}</option>`:""}</select><select id="qfitsel" class="chip" aria-label="Fit"><option value="All">Any fit</option>${[["ok","Fits"],["tight","Tight"],["over","Over"],["none","No target retail"]].map(([v,t])=>`<option value="${v}" ${v===S.qfit?"selected":""}>${t}</option>`).join("")}</select><select id="qsortsel" class="chip" aria-label="Order of product types"><option value="count" ${S.qsort==="count"?"selected":""}>Most quotes first</option><option value="az" ${S.qsort==="az"?"selected":""}>A–Z</option></select><label class="chip" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="qaddons" ${S.addons?"checked":""}> Add-ons</label>` : "";
+  const pvtog=`<span class="vtog" role="group" aria-label="Product layout"><button data-pview="grid" aria-pressed="${S.pview==="grid"}">Grid</button><button data-pview="list" aria-pressed="${S.pview!=="grid"}">List</button></span>`;
+  $("#list").classList.toggle("pgridmode", S.pview==="grid" && (S.view==="q" || S.q.trim().length>=2));
+  const qctl = S.view==="q" ? pvtog+(customers().length?`<select id="custsel" class="chip" aria-label="Customer">${customers().map(c=>`<option ${c.name===activeCust()?.name?"selected":""}>${esc(c.name)}</option>`).join("")}</select>`:"")+`<select id="qtypesel" class="chip" aria-label="Product type"><option value="All">All product types</option>${[...(S.qtypeCounts||new Map())].sort((a,b)=>a[0].localeCompare(b[0])).map(([t,n])=>`<option value="${esc(t)}" ${t===S.qtype?"selected":""}>${esc(t)} (${n})</option>`).join("")}${S.qtype!=="All"&&!(S.qtypeCounts||new Map()).has(S.qtype)?`<option selected>${esc(S.qtype)}</option>`:""}</select><select id="qfitsel" class="chip" aria-label="Fit"><option value="All">Any fit</option>${[["ok","Fits"],["tight","Tight"],["over","Over"],["none","No target retail"]].map(([v,t])=>`<option value="${v}" ${v===S.qfit?"selected":""}>${t}</option>`).join("")}</select><select id="qsortsel" class="chip" aria-label="Order of product types"><option value="count" ${S.qsort==="count"?"selected":""}>Most quotes first</option><option value="az" ${S.qsort==="az"?"selected":""}>A–Z</option></select><label class="chip" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="qaddons" ${S.addons?"checked":""}> Add-ons</label>` : "";
   const ltog = S.view==="f" ? `<span class="vtog" role="group" aria-label="Layout"><button data-layout="cards" aria-pressed="${S.layout!=="table"}">Cards</button><button data-layout="table" aria-pressed="${S.layout==="table"}">Table</button></span>` : "";
   $("#cats").innerHTML = ltog + qctl + (S.view==="f"&&S.layout!=="table"?`<select id="sortsel" class="chip" aria-label="Sort factories"><option value="month" ${S.sort==="month"?"selected":""}>By month added</option><option value="az" ${S.sort==="az"?"selected":""}>A–Z</option></select>`:"") + (S.view==="d"&&!S.dcat?DGS.map(([k,t])=>`<button class="chip" data-dg="${k}" aria-pressed="${S.dgroup===k}">${t}<span class="n">${S.docs.filter(d=>dgOf(d)===k).length}</span></button>`).join(""):"") + (S.view==="d"?`<select id="dtypesel" class="chip" aria-label="File type"><option value="All">All types</option>${DOCTYPES.filter(t=>S.docs.some(d=>inDG(d)&&docTypeOf(d)===t)).map(t=>`<option ${t===S.dtype?"selected":""}>${esc(t)}</option>`).join("")}</select>`:"") + (S.view!=="d"?`<select id="srcsel" class="chip" aria-label="Source"><option value="All">All sources</option>${["WeChat","Alibaba","Global Sources","Email","Card scan","Added by hand"].filter(x=>sups.some(s=>srcOf(s).includes(x))).map(x=>`<option ${x===S.src?"selected":""}>${esc(x)}</option>`).join("")}</select>`:"") + (usedProj.length&&S.view!=="d"?`<select id="projsel" class="chip" aria-label="Project"><option value="All">All projects</option>${usedProj.map(p=>`<option ${p===S.proj?"selected":""}>${esc(p)}</option>`).join("")}</select>`:"") + (()=>{ const ev=[...new Set(sups.map(x=>x.metAt).filter(Boolean))].sort(); if(S.met!=="All"&&!ev.includes(S.met)) S.met="All"; return ev.length&&S.view!=="d"?`<select id="metsel" class="chip" aria-label="Where you met"><option value="All">All events</option>${ev.map(x=>`<option ${x===S.met?"selected":""}>${esc(x)}</option>`).join("")}</select>`:""; })() + cats.map(c=>{ const sub=c!==famOf(c); const hasSub=!sub&&keys.some(k=>k!==c&&famOf(k)===c); return `<button class="chip${sub?" sub":""}" data-cat="${esc(c)}" aria-pressed="${c===S.cat}">${esc(sub?c.split(" – ").slice(1).join(" – "):c)}${hasSub&&c!==openFam?" ▾":""}<span class="n">${c==="All"?allN:counts[c]}</span></button>`; }).join("");
   $("#v-f").setAttribute("aria-pressed",S.view==="f"); $("#v-q").setAttribute("aria-pressed",S.view==="q");
@@ -2738,11 +2804,16 @@ async function exportCsv(){
 }
 
 /* ---------- events ---------- */
-{ let st=0; $("#search").addEventListener("input",e=>{ const v=e.target.value.trim(); clearTimeout(st); st=setTimeout(()=>{ if(S.q!==v) S.sall=new Set(); S.q=v; render(); },v.length>=2?200:0); }); }
+{ let st=0; $("#search").addEventListener("input",e=>{ const v=e.target.value.trim(); clearTimeout(st); st=setTimeout(()=>{ if(S.q!==v){ S.sall=new Set(); S.sf={type:"",price:"",terms:"",photo:"",recent:""}; } S.q=v; render(); },v.length>=2?200:0); }); }
 const clearSearch=()=>{ if(!S.q&&!$("#search").value) return; S.q=""; $("#search").value=""; S.sall=new Set(); };
 $(".searchrow .seg").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b&&b.id!=="v-more") clearSearch(); },true);
 $("#cats").addEventListener("click",e=>{ const so=e.target.closest("[data-ssort]"); if(so){ S.ssort=so.dataset.ssort; try{ localStorage.setItem("sb-ssort",S.ssort); }catch{} render(); return; } if(e.target.closest("[data-sclear]")){ clearSearch(); render(); $("#search").focus(); } });
-$("#list").addEventListener("click",e=>{ const a=e.target.closest("[data-sall]"); if(a){ S.sall.add(a.dataset.sall); render(); } });
+$("#list").addEventListener("click",e=>{ const a=e.target.closest("[data-sall]"); if(a){ S.sall.add(a.dataset.sall); render(); return; }
+  const f=e.target.closest("[data-sf]"); if(f){ S.sf[f.dataset.sf]=f.dataset.v; S.sall=new Set(); render(); return; } if(e.target.closest("[data-sfclear]")){ S.sf={type:"",price:"",terms:"",photo:"",recent:""}; render(); } });
+$("#list").addEventListener("click",e=>{ if(e.target.closest(".cmp")) e.stopPropagation(); },true);
+$("#list").addEventListener("keydown",e=>{ if(e.target.closest(".cmp")) e.stopPropagation(); },true);
+$("#list").addEventListener("change",e=>{ const c=e.target.closest("[data-cmp]"); if(!c) return; if(c.checked){ if(S.cmp.size>=4){ c.checked=false; toast("Compare up to 4 items at a time"); return; } S.cmp.set(c.dataset.cmp,1); } else S.cmp.delete(c.dataset.cmp); cmpBar(); });
+$("#cats").addEventListener("click",e=>{ const b=e.target.closest("[data-pview]"); if(b){ S.pview=b.dataset.pview; try{ localStorage.setItem("sb-pview",S.pview); }catch{} render(); } });
 $("#v-f").onclick=()=>{ S.view="f"; render(); };
 $("#v-q").onclick=()=>{ S.view="q"; render(); };
 $("#v-q").addEventListener("click",()=>{ if(window.matchMedia("(min-width:980px)").matches && !document.querySelector("#scrim .stack #rt-t")) closeSheet(); });
