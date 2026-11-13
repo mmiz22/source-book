@@ -684,10 +684,11 @@ function landed(q,l){
   const L=q.landed||{}, t=num(l.target);
   const mg=total=>t?(t-total)/t:null;
   if(q.incoterm==="DDP") return {fob,freight:0,duty:0,other:0,total:fob,pct:0,margin:mg(fob)};
-  let freight=0;
+  let freight=0, units=null, unitsSrc="";
   if(!["CIF","CFR"].includes(q.incoterm)){
-    const cc=pick(L.containerCost,S.settings.containerCost), u=(n=>n&&n>=200?n:null)(num(l.unitsPerCtr))||num(S.settings.defaultUnits);
-    freight=(cc!=null&&u)?cc/u:(pick(L.freightPerUnit,S.settings.freightPerUnit)??0);
+    const cc=pick(L.containerCost,S.settings.containerCost), own=(n=>n&&n>=200?n:null)(num(l.unitsPerCtr)), tu=own?null:typeUnits((x=>x&&!x.a?x.t:null)(typeOf(l)));
+    units=own||tu||num(S.settings.defaultUnits); unitsSrc=own?"quote":tu?"type":"default";
+    freight=(cc!=null&&units)?cc/units:(pick(L.freightPerUnit,S.settings.freightPerUnit)??0);
   }
   const own=num(L.dutyPct)!=null||num(L.tariffPct)!=null;
   const td=own?null:typeDuty((x=>x&&!x.a?x.t:null)(typeOf(l)));
@@ -695,10 +696,19 @@ function landed(q,l){
   const duty=fob*pct/100;
   const other=pick(L.otherPerUnit,S.settings.otherPerUnit)??0;
   const total=fob+freight+duty+other;
-  return {fob,freight,duty,other,total,pct,dutySrc:own?"quote":td?"type":"default",margin:mg(total)};
+  return {fob,freight,duty,other,total,pct,units,unitsSrc,dutySrc:own?"quote":td?"type":"default",margin:mg(total)};
 }
 // duty + tariff % per product type (settings/duties): {pct, hts, mfn, s301, s232, note}
 S.duties={}; S.dutiesExists=false;
+// units per 40HQ container per product type (settings/ctrunits): {units, src}. A quote line's own container quantity wins.
+S.ctrUnits={};
+function typeUnits(t){ if(!t) return null; const n=num(S.ctrUnits[tslug(t)]?.units); return n&&n>=1?n:null; }
+async function saveCtrUnits(t,val){
+  const v=String(val||"").replace(/[^0-9]/g,""); const map={...S.ctrUnits}; const k=tslug(t);
+  if(v==="") delete map[k]; else map[k]={type:t,units:v,src:"Set by you",set:today()};
+  try{ await db.doc("settings/ctrunits").set({map,updatedAt:Date.now()}); toast(v?`${t}: ${(+v).toLocaleString()} units per container`:`${t}: back to the default container quantity`); }
+  catch(e){ toast("Couldn't save the container quantity ("+(e.code||"error")+")."); }
+}
 function typeDuty(t){ if(!t) return null; const d=S.duties[tslug(t)]; return d&&num(d.pct)!=null?d:null; }
 /* HTS codes open the US tariff schedule (USITC) search */
 function htsUrl(c){ const d=String(c).replace(/\D/g,""); const f=d.length>=8?`${d.slice(0,4)}.${d.slice(4,6)}.${d.slice(6,8)}`:d.length>=6?`${d.slice(0,4)}.${d.slice(4,6)}`:d.slice(0,4); return "https://hts.usitc.gov/search?query="+encodeURIComponent(f); }
@@ -714,7 +724,7 @@ async function saveDuty(t,val){
   try{ await db.doc("settings/duties").set({map,updatedAt:Date.now()}); S.dutiesExists=true; toast(v?`${t}: duty + tariff ${v}%`:`${t}: duty cleared`); }
   catch(e){ toast("Couldn't save the duty ("+(e.code||"error")+")."); }
 }
-function lcTitle(lc){ if(!lc) return ""; return `FOB ${usd(lc.fob)} + freight ${usd(lc.freight)} + duty/tariff ${lc.pct.toFixed(1).replace(/\.0$/,"")}% (${usd(lc.duty)})${lc.other?` + other ${usd(lc.other)}`:""}`; }
+function lcTitle(lc){ if(!lc) return ""; return `FOB ${usd(lc.fob)} + freight ${usd(lc.freight)}${lc.units?` (${Math.round(lc.units).toLocaleString()} per container, ${lc.unitsSrc==="quote"?"from this quote":lc.unitsSrc==="type"?"estimate for this product type":"general default"})`:""} + duty/tariff ${lc.pct.toFixed(1).replace(/\.0$/,"")}% (${usd(lc.duty)})${lc.other?` + other ${usd(lc.other)}`:""}`; }
 const usd=n=>n==null?"—":"$"+n.toFixed(n<10?3:2);
 function marginHtml(m){
   if(m==null) return "";
@@ -801,7 +811,7 @@ function typeMath(t){
   const retail=typeRetail(t); if(retail==null||retail<=0) return null;
   const cc=retail*custPct()/100, maxL=cc*(1-setPct("marginPct",45)/100);
   const td=typeDuty(t); const pct=td?num(td.pct):(num(S.settings.dutyPct)??0)+(num(S.settings.tariffPct)??0);
-  const cc0=num(S.settings.containerCost), u0=num(S.settings.defaultUnits); const fr=(cc0!=null&&u0)?cc0/u0:(num(S.settings.freightPerUnit)??0);
+  const cc0=num(S.settings.containerCost), u0=typeUnits(t)||num(S.settings.defaultUnits); const fr=(cc0!=null&&u0)?cc0/u0:(num(S.settings.freightPerUnit)??0);
   const maxFob=(maxL-fr-(num(S.settings.otherPerUnit)??0))/(1+pct/100);
   return {retail,cc,maxL,maxFob,pct};
 }
@@ -970,7 +980,7 @@ function renderQuotes(L,shown){
     const nf=new Set(g.map(r=>r.q.supplierId)).size, real=t!==UNSORTED&&t!==ADDON_GROUP, tm=real?typeMath(t):null;
     const fits=g.filter(r=>r.f?.st==="ok").length, open=S.openGroups.has(t), show=open?g:g.slice(0,lim);
     return `<section class="tgroup"><div class="thead"><h3>${esc(t)}</h3><span class="tmeta">${g.length} quote${g.length>1?"s":""} · ${nf} factor${nf>1?"ies":"y"}${tm&&fits?` · ${fits} fit`:""}</span></div>
-      ${real?`<div class="tcalc"><label>Target retail $<input data-retail="1" data-type="${esc(t)}" value="${esc(S.targets[tslug(t)]?.retail||"")}" inputmode="decimal" placeholder="e.g. 14.99" ${canWrite?"":"disabled"} aria-label="Target retail for ${esc(t)}"></label>${customers().length>1?customers().map(c=>`<label title="Retail for this product at ${esc(c.name)}. Leave blank to use the target retail.">${esc(shortCust(c.name))} $<input data-retail="1" data-cust="${esc(c.name)}" data-type="${esc(t)}" value="${esc(S.targets[tslug(t)]?.by?.[c.name]||"")}" inputmode="decimal" placeholder="same" ${canWrite?"":"disabled"} aria-label="Retail for ${esc(t)} at ${esc(c.name)}" style="width:64px"></label>`).join(""):""}<label title="${esc(dutyTitle(typeDuty(t)))}">Duty + tariff %<input data-duty="1" data-type="${esc(t)}" value="${esc(typeDuty(t)?.pct??"")}" inputmode="decimal" placeholder="${esc(String((num(S.settings.dutyPct)??0)+(num(S.settings.tariffPct)??0)))}" ${canWrite?"":"disabled"} aria-label="Duty and tariff percent for ${esc(t)}" style="width:64px"></label>${typeDuty(t)?.hts?`<span class="note" title="${esc(dutyTitle(typeDuty(t)))}">HTS ${htsA(esc(typeDuty(t).hts))}</span>`:""}${tm?`<span>Customer cost <b>${usd(tm.cc)}</b></span><span>Max landed <b>${usd(tm.maxL)}</b></span><span>Max FOB ≈ <b>${tm.maxFob>0?usd(tm.maxFob):"—"}</b></span>`:`<span>Set a target retail to check which quotes fit.</span>`}</div>`:""}
+      ${real?`<div class="tcalc"><label>Target retail $<input data-retail="1" data-type="${esc(t)}" value="${esc(S.targets[tslug(t)]?.retail||"")}" inputmode="decimal" placeholder="e.g. 14.99" ${canWrite?"":"disabled"} aria-label="Target retail for ${esc(t)}"></label>${customers().length>1?customers().map(c=>`<label title="Retail for this product at ${esc(c.name)}. Leave blank to use the target retail.">${esc(shortCust(c.name))} $<input data-retail="1" data-cust="${esc(c.name)}" data-type="${esc(t)}" value="${esc(S.targets[tslug(t)]?.by?.[c.name]||"")}" inputmode="decimal" placeholder="same" ${canWrite?"":"disabled"} aria-label="Retail for ${esc(t)} at ${esc(c.name)}" style="width:64px"></label>`).join(""):""}<label title="${esc(dutyTitle(typeDuty(t)))}">Duty + tariff %<input data-duty="1" data-type="${esc(t)}" value="${esc(typeDuty(t)?.pct??"")}" inputmode="decimal" placeholder="${esc(String((num(S.settings.dutyPct)??0)+(num(S.settings.tariffPct)??0)))}" ${canWrite?"":"disabled"} aria-label="Duty and tariff percent for ${esc(t)}" style="width:64px"></label><label title="${esc(S.ctrUnits[tslug(t)]?.src?S.ctrUnits[tslug(t)].src+". ":"")}Used to spread the container cost over each unit when a quote does not give its own container quantity.">Units / 40HQ<input data-ctr="1" data-type="${esc(t)}" value="${esc(S.ctrUnits[tslug(t)]?.units??"")}" inputmode="numeric" placeholder="${esc(S.settings.defaultUnits||"")}" ${canWrite?"":"disabled"} aria-label="Units per 40 foot container for ${esc(t)}" style="width:84px"></label>${typeDuty(t)?.hts?`<span class="note" title="${esc(dutyTitle(typeDuty(t)))}">HTS ${htsA(esc(typeDuty(t).hts))}</span>`:""}${tm?`<span>Customer cost <b>${usd(tm.cc)}</b></span><span>Max landed <b>${usd(tm.maxL)}</b></span><span>Max FOB ≈ <b>${tm.maxFob>0?usd(tm.maxFob):"—"}</b></span>`:`<span>Set a target retail to check which quotes fit.</span>`}</div>`:""}
       ${show.map((r,i)=>`<div class="qrow2${i===0&&r.f?.st==="ok"&&g.length>1?" best":""}" data-open="${esc(r.q.supplierId)}" tabindex="0" role="button">
         ${r.l.img?`<img class="pimg" src="${esc(r.l.img)}" alt="" loading="lazy">`:`<div class="ph"></div>`}
         <div class="who">${esc(r.s?.company||r.s?.companyChinese||"Unknown factory")}</div>
@@ -2846,8 +2856,8 @@ $("#list").addEventListener("click",e=>{
   { const rd=e.target.closest("[data-rdraft]"); if(rd){ e.stopPropagation(); return openMessage(rd.dataset.rdraft); } }
   if(e.target.closest("input,select,label,textarea")) return;
   const o=e.target.closest("[data-open]"); if(o) return openFactory(o.dataset.open); if(e.target.closest('[data-act="add"]')) openFactoryForm(); });
-$("#list").addEventListener("change",e=>{ const i=e.target.closest("[data-retail]"); if(i) saveTarget(i.dataset.type,i.value,i.dataset.cust||undefined); const d=e.target.closest("[data-duty]"); if(d) saveDuty(d.dataset.type,d.value); });
-$("#list").addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.matches("[data-retail],[data-duty]")){ e.target.blur(); return; } if(e.key!=="Enter"&&e.key!==" ") return; if(e.target.matches("input,select,textarea,button,a")) return; const o=e.target.closest("[data-open]"); if(o){ e.preventDefault(); openFactory(o.dataset.open); } });
+$("#list").addEventListener("change",e=>{ const i=e.target.closest("[data-retail]"); if(i) saveTarget(i.dataset.type,i.value,i.dataset.cust||undefined); const d=e.target.closest("[data-duty]"); if(d) saveDuty(d.dataset.type,d.value); const cu=e.target.closest("[data-ctr]"); if(cu) saveCtrUnits(cu.dataset.type,cu.value); });
+$("#list").addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.matches("[data-retail],[data-duty],[data-ctr]")){ e.target.blur(); return; } if(e.key!=="Enter"&&e.key!==" ") return; if(e.target.matches("input,select,textarea,button,a")) return; const o=e.target.closest("[data-open]"); if(o){ e.preventDefault(); openFactory(o.dataset.open); } });
 $("#cats").addEventListener("click",e=>{ const b=e.target.closest("[data-layout]"); if(!b) return; S.layout=b.dataset.layout; try{ localStorage.setItem("sb-layout",S.layout); }catch{}  render(); });
 $("#cats").addEventListener("change",e=>{ const id=e.target.id;
   if(id==="qtypesel"){ S.qtype=e.target.value; render(); } else if(id==="qfitsel"){ S.qfit=e.target.value; render(); }
@@ -3507,6 +3517,7 @@ render();
   db.doc("settings/defaults").onSnapshot(snap=>{ S.settings={...SET_DEFAULT,...(snap.exists?snap.data():{})}; render(); }, ()=>{});
   db.collection("ptypes").onSnapshot(snap=>{ const m=new Map(), ids=new Set(); snap.docs.forEach(d=>{ ids.add(d.id); const mp=d.data()?.map||{}; for(const k in mp) if(mp[k]&&mp[k].t) m.set(k,mp[k]); }); S.ptypes=m; S.ptypeDocs=ids; render(); }, ()=>{});
   db.collection("inbox").onSnapshot(snap=>{ S.inbox=snap.docs.map(x=>({id:x.id,...x.data()})); dropBadge(); const l=document.getElementById("db-list"); if(l) l.innerHTML=dropList(); }, ()=>{});
+  db.doc("settings/ctrunits").onSnapshot(snap=>{ S.ctrUnits=(snap.exists&&snap.data()?.map)||{}; render(); }, ()=>{});
   db.doc("settings/duties").onSnapshot(snap=>{ S.dutiesExists=!!snap.exists; S.duties=(snap.exists&&snap.data()?.map)||{}; render(); }, ()=>{});
   db.doc("settings/targets").onSnapshot(snap=>{ S.targetsExists=!!snap.exists; S.targets=(snap.exists&&snap.data()?.map)||{}; render(); }, ()=>{});
   if(canWrite){
