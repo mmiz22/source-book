@@ -1200,7 +1200,9 @@ function render(){
 const STOP=new Set("the a an and or for with of to in on by pcs pc set new style color colour box packing logo size mm cm inch usd fob moq".split(" "));
 const toks=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").split(" ").filter(w=>w.length>1&&!STOP.has(w)).map(w=>w.length>3?w.replace(/(es|s)$/,""):w);
 const groupOfType=t=>(TYPE_GROUPS.find(g=>g[1].includes(t))||[])[0]||"";
+const SIM_POOL=150;   // how many of the closest quoted items Claude judges against the photo; every quoted item is screened first
 function similarPool(id){
+  const toks=x=>sTok(x).filter(w=>w.length>1&&!STOP.has(w));   // same related-word matching as the search box
   const want=new Set([...toks(id.name),...arr(id.keywords).flatMap(toks),...arr(id.features).flatMap(toks)]);
   const types=[id.type,...arr(id.alt_types)].filter(t=>ALL_TYPES.includes(t)), grp=new Set(types.map(groupOfType));
   const out=[];
@@ -1229,11 +1231,11 @@ Reply with only JSON: {"name":"short generic product name","type":"","alt_types"
   return await sample.json(ask, img?{images:imgs,modelTier:"default"}:{modelTier:"default"});
 }
 async function rankSimilar(id, cands, img){
-  const list=cands.map((r,i)=>`${i+1}. ${String(r.l.item).replace(/\s+/g," ").slice(0,220)}${r.t?` [${r.t}]`:""}`).join("\n");
+  const list=cands.map((r,i)=>`${i+1}. ${String(r.l.item).replace(/\s+/g," ").slice(0,cands.length>60?150:220)}${r.t?` [${r.t}]`:""}`).join("\n");
   const r=await sample.json(`A shopper photographed a product in a store. It was identified as: ${JSON.stringify({name:id.name,type:id.type,features:id.features,package_text:id.package_text,pack_count:id.pack_count,material:id.material,brand:id.brand})}
 ${img?"The shopper's photo is attached; judge against what you see in it. ":""}Below are items from factory quotes. Return ONLY items that are the same kind of product the shopper could source instead (same function and form, e.g. a neck fan matches a neck fan, not a desk fan or a power bank). Score 0-100 (100 = same product, 75 = same kind with different specs or size, 50 = same kind but clearly different style). Do not return items of a different kind, accessories for it, or items merely in the same category. If nothing is the same kind of product, return an empty list. Keep "why" under 12 words and mention the key difference if any.
 ${list}
-Reply with only JSON: {"matches":[{"i":1,"score":90,"why":""}]} with at most 12 matches, best first.`,img?{images:[img],modelTier:"default"}:{modelTier:"default"});
+Reply with only JSON: {"matches":[{"i":1,"score":90,"why":""}]} with at most 20 matches, best first.`,img?{images:[img],modelTier:"default"}:{modelTier:"default"});
   const out=[]; for(const m of arr(r?.matches)){ const j=(+m?.i)-1; if(j>=0&&j<cands.length&&!out.some(o=>o.r===cands[j])) out.push({r:cands[j],score:+m.score||0,why:String(m.why||"").slice(0,120)}); }
   return out;
 }
@@ -1388,7 +1390,7 @@ async function compRun(){
         const img=imgs[0];
         if(!id||!(id.name||id.type)) throw {code:"unreadable"};
         const tag=num(String(id.price||"").replace(/[^0-9.]/g,"")), price=tag&&tag>0?tag:null, rp=num(String(id.regular_price||"").replace(/[^0-9.]/g,""));
-        const pool=similarPool(id).slice(0,40); let good=[];
+        const pool=similarPool(id).slice(0,SIM_POOL); let good=[];
         if(pool.length){ let ranked=null; try{ ranked=await rankSimilar(id,pool,img); }catch(e){ try{ ranked=await rankSimilar(id,pool,null); }catch(e2){ ranked=null; } }
           good=ranked?ranked.filter(x=>x.score>=50):pool.filter(r=>r.typeHit>=10).slice(0,8).map(r=>({r,score:0,why:""})); }
         await saveFind(j.findId||null,id,imgs,(price||(j.findId?(arr(S.finds).find(x=>x.id===j.findId)?.price||null):null)),rp,good,"",j.store,j.trip);
@@ -1482,10 +1484,10 @@ function openFindSimilar(){
         if(!typed&&price) $("#simprice").value=price.toFixed(2);
         const rp=num(String(id.regular_price||"").replace(/[^0-9.]/g,""));
         const head=`<div class="simid"><b>${esc(id.name||id.type)}</b>${id.brand?` · ${esc(id.brand)}`:""}${id.model?` · ${esc(id.model)}`:""}${tag?`<div><b>${usd(tag)}</b>${rp&&rp>tag?` <span class="note">regular ${usd(rp)}</span>`:""}${id.price_note?` <span class="note">${esc(id.price_note)}</span>`:""}${id.pack_count?` <span class="note">· ${esc(id.pack_count)} pack</span>`:""}${id.retailer?` <span class="note">· ${esc(id.retailer)}</span>`:""}</div>`:""}${id.package_text?`<div class="note">“${esc(String(id.package_text).slice(0,260))}”</div>`:""}${id.item_number?`<div class="note">Item / UPC: ${esc(id.item_number)}</div>`:""}${ALL_TYPES.includes(id.type)&&id.type!=="Other"?` · ${esc(id.type)}`:""}${arr(id.features).length?`<div class="note">${esc(arr(id.features).slice(0,6).join(" · "))}</div>`:""}<div class="note">Not what it is? Type what it is above and tap Search again.</div>${price?`<div class="note">Fit is checked against ${tag&&!typed?"the tag price":"the store price"} of ${usd(price)} (${setPct("customerPct",55)}% customer cost, ${setPct("marginPct",45)}% margin).</div>`:""}</div>`;
-        const pool=similarPool(id).slice(0,40);
+        const pool=similarPool(id).slice(0,SIM_POOL);
         const wp={name:id.name,type:id.type,brand:id.brand,features:id.features,store:store()};
         if(!pool.length){ res.innerHTML=head+`<div class="empty"><strong>Nothing similar in your quotes</strong><span>None of your quoted items look like a ${esc(id.name||id.type)}. Look for a new factory below.</span></div>`+webBox(wp); st.textContent=""; findId=await saveFind(findId,id,img,price,rp,[],text,store()); wp.findId=findId; return; }
-        st.textContent=`Comparing with ${pool.length} quoted items…`;
+        st.textContent=`Checked all ${S.quotes.reduce((n,q)=>n+arr(q.lines).length,0).toLocaleString()} quoted items. Comparing the ${pool.length} closest with your ${img?"photo":"description"}…`;
         let ranked=null; try{ ranked=await rankSimilar(id,pool,img); }catch(e){ try{ if(img) ranked=await rankSimilar(id,pool,null); }catch(e2){ ranked=null; } }
         let good, fallback=false;
         if(ranked){ good=ranked.filter(x=>x.score>=50); }
