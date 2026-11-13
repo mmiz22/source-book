@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#ededed"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Source Book"><meta name="apple-mobile-web-app-status-bar-style" content="default"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" type="image/png" href="favicon.png"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#faf8ee"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Source Book"><meta name="apple-mobile-web-app-status-bar-style" content="default"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" type="image/png" href="favicon.png"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Source Book</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -406,9 +406,9 @@ a.hts{color:var(--accent);text-decoration:underline;white-space:nowrap}
 
 /* ===== Chat-app look: icon rail, flat conversation list, grey panes, one green accent ===== */
 :root{
-  --bg:#ededed; --surface:#ffffff; --sunk:#e3e3e3; --line:#dcdcdc; --fg:#191919; --muted:#7d7d7d;
+  --bg:#f3f0e4; --surface:#fffefa; --sunk:#e9e5d6; --line:#e0dbca; --fg:#1c1b17; --muted:#7c786b;
   --accent:#07c160; --accent-fg:#ffffff; --accent-soft:#e3f6ea; --stamp:#d9432f; --ok:#06a552; --warn:#a86a00;
-  --rail:#e9e9e9; --pane:#f7f7f7; --hover:#ececec; --sel:#dedede; --menu:#4c4c4c;
+  --rail:#ece8da; --pane:#faf8ee; --hover:#f0ecde; --sel:#e4dfce; --menu:#4a4841;
   --shadow:none; --shadow-hi:0 6px 24px rgb(0 0 0 / .14);
   --display:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
   --body:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
@@ -512,6 +512,31 @@ main .wrap{padding-bottom:150px}
 #cats .chip,#cats select.chip{background:var(--sunk);border:0;border-radius:6px;font-size:.8rem;padding:6px 10px}
 #cats .chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
 #cats{gap:6px;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);padding-right:24px}
+
+/* inside pages (factory, forms): grouped cells on the ivory ground, quiet labels, borderless fields */
+.sheet .label{text-transform:none;letter-spacing:0;font-size:.8rem;font-weight:500}
+.sheet .kv{background:var(--surface);border-radius:10px;padding:2px 14px;gap:0 12px}
+.sheet .kv dt,.sheet .kv dd{padding:10px 0;border-bottom:1px solid var(--line)}
+.sheet .kv dt:last-of-type,.sheet .kv dd:last-of-type{border-bottom:0}
+.sheet .qcard{border:0;border-radius:10px;padding:14px}
+.sheet .field input,.sheet .field select,.sheet .field textarea{border:1px solid transparent;background:var(--surface);border-radius:8px;padding:11px 12px}
+.sheet .field input:focus,.sheet .field select:focus,.sheet .field textarea:focus{border-color:var(--accent);outline:0}
+.sheet .field>.label,.sheet .field>label{padding-left:2px}
+.sheet .links a{border:0;border-radius:6px}
+.sheet .btn{border-color:transparent;background:var(--surface)}
+.sheet .btn.primary{background:var(--accent);color:var(--accent-fg)}
+.sheet .btn.ghost{background:transparent;border-color:var(--line)}
+.sheet .btn.danger{background:transparent;border-color:var(--stamp)}
+.sheet .empty{border:0;background:var(--surface);border-radius:10px}
+.x{background:transparent;font-size:1rem}
+.x:hover{background:var(--sunk)}
+.sheethead{border-bottom:0;margin-bottom:6px}
+.prof{display:grid;grid-template-columns:56px 1fr;gap:14px;align-items:center;background:var(--surface);border-radius:10px;padding:14px}
+.prof .thumb{width:56px;aspect-ratio:1;border-radius:8px;display:grid;place-items:center;color:#fff;font-family:var(--body);font-weight:600;font-size:1.15rem;object-fit:cover}
+.prof img.thumb{background:#fff;border:1px solid var(--line);object-fit:contain}
+.prof .pname{font-weight:600;font-size:1.05rem;overflow-wrap:anywhere}
+.prof .tags{margin-top:6px}
+@media (min-width:980px){ body:not(.tbl) #sheetRoot .sheet>.sheethead,body:not(.tbl) #sheetRoot .sheet>.stack{max-width:860px;margin-left:auto;margin-right:auto} }
 
 </style>
 
@@ -1361,9 +1386,13 @@ function openFactory(id){
     ["Phone",arr(s.phones)], ["Email",arr(s.emails)], ["WeChat",s.wechat], ["WhatsApp",s.whatsapp],
     ["Met at",[s.metAt,s.booth?("booth "+s.booth):""].filter(Boolean).join(" · ")], ["Website",s.website], ["Address",s.address], ["Makes",s.products], ["Audits",s.audits], ["Last visit",s.visited], ["Last contact",s.lastContact], ["Added",addedAt(s)?new Date(addedAt(s)).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):""], ["Notes",s.notes],
   ].filter(([,v])=>arr(v).length);
+  const pimg=s.cardFront||arr(s.cards)[0]?.file;
   const html=`
+    <div class="prof">${pimg?`<img class="thumb" src="${blobUrl(pimg)}" alt="">`:`<div class="thumb" style="background:${avColor(s.company||s.id)}">${esc((s.company||"?").replace(/[^A-Za-z0-9]/g,"").slice(0,2).toUpperCase()||"?")}</div>`}
+    <div style="min-width:0"><div class="pname">${esc(s.company||"Unnamed factory")}</div>
     ${s.companyChinese?`<div class="note">${esc(s.companyChinese)}</div>`:""}
-    <div class="tags">${srcBadges(s)}${arr(s.categories).map(c=>`<span class="tag">${esc(c)}</span>`).join("")||`<span class="note">No category yet</span>`}${arr(s.projects).map(p=>`<span class="tag proj">${esc(p)}</span>`).join("")}${s.rating?`<span class="stars">${stars(s.rating)}</span>`:""}</div>
+    <div class="note">${esc([s.contactName,[s.city,s.province].filter(Boolean).join(", ")].filter(Boolean).join(" · "))}</div>
+    <div class="tags">${srcBadges(s)}${arr(s.categories).map(c=>`<span class="tag">${esc(c)}</span>`).join("")||`<span class="note">No category yet</span>`}${arr(s.projects).map(p=>`<span class="tag proj">${esc(p)}</span>`).join("")}${s.rating?`<span class="stars">${stars(s.rating)}</span>`:""}</div></div></div>
     ${s.followUp?`<div class="followbox ${followState(s)?.cls||""}"><div><strong>${esc(followState(s)?.txt||"")}</strong>${s.followNote?`<div>${esc(s.followNote)}</div>`:""}</div>${canWrite?`<div class="row"><button class="btn sm" id="fu-done">Done</button><button class="btn sm ghost" id="fu-week">+1 week</button></div>`:""}</div>`:""}
     ${replyBox(s)}
     <div class="row"><button class="btn sm" id="qrc">Save to phone contacts</button>${canWrite?`<button class="btn sm" id="rfqb">Make RFQ${rfqsFor(id).filter(r=>r.kind!=="sample").length?` · ${rfqsFor(id).filter(r=>r.kind!=="sample").length} saved`:""}</button><button class="btn sm" id="smpb">Sample request${rfqsFor(id).filter(r=>r.kind==="sample").length?` · ${rfqsFor(id).filter(r=>r.kind==="sample").length} saved`:""}</button>`:""}${sample?`<button class="btn sm" id="msg">Write a message</button>`:""}${canWrite&&!s.followUp?`<button class="btn sm ghost" id="fu-set">Set follow-up</button>`:""}</div>
@@ -3234,7 +3263,7 @@ function avColor(name){ const P=["#07c160","#2f80ed","#e2852b","#8e5bd1","#d9534
     mb.addEventListener("click",e=>{ e.stopPropagation(); set(!seg.classList.contains("mopen")); });
     document.addEventListener("click",()=>set(false)); document.addEventListener("keydown",e=>{ if(e.key==="Escape") set(false); }); }
   { const tb=document.createElement("button"); tb.className="btn sm ghost"; tb.id="themebtn"; const lab=()=>{ tb.textContent=document.documentElement.dataset.theme==="dark"?"☀ Light mode":"🌙 Dark mode"; }; lab();
-    tb.onclick=()=>{ const d=document.documentElement.dataset.theme==="dark"?"light":"dark"; document.documentElement.dataset.theme=d; try{ localStorage.setItem("sb-theme",d); }catch{} document.querySelector('meta[name="theme-color"]')?.setAttribute("content",d==="dark"?"#161616":"#ededed"); lab(); };
+    tb.onclick=()=>{ const d=document.documentElement.dataset.theme==="dark"?"light":"dark"; document.documentElement.dataset.theme=d; try{ localStorage.setItem("sb-theme",d); }catch{} document.querySelector('meta[name="theme-color"]')?.setAttribute("content",d==="dark"?"#161616":"#faf8ee"); lab(); };
     $(".brand")?.append(tb); }
   { const f=$("#add"); if(f){ const upd=()=>{ const m=String(f.textContent||"").match(/(\d+)/); if(m) f.dataset.n=m[1]; else delete f.dataset.n; f.setAttribute("aria-label",f.textContent||"Scan card"); f.title=f.textContent||"Scan card"; }; new MutationObserver(upd).observe(f,{childList:true,characterData:true,subtree:true}); upd(); } }
   const fab=$("#add"), fm=$("#fabmenu"); if(fab&&fm){
