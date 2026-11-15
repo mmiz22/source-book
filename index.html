@@ -1441,10 +1441,11 @@ function openCompShop(tripId){
   let trip=tripId||null; const ex=trip?tripsOf().find(t=>t.id===trip):null;
   const last=(()=>{ try{ return localStorage.getItem("sb-laststore")||""; }catch{ return ""; } })();
   openSheet("Comp shop",`
-    <div class="note">For each product, take as many photos as you need (front, back of the package, price tag), then tap Next product. Claude reads the brand, description, key points, packaging and color from all the photos in the background and lines the product up against your factory quotes.</div>
+    <div class="note">For each product, take as many photos as you need (front, back of the package, price tag), then tap Next product. Or use Bulk add to pick many photos at once, one per product. Claude reads the brand, description, key points, packaging and color from all the photos in the background and lines the product up against your factory quotes.</div>
     <div class="field"><label for="compstore">Store</label><input id="compstore" placeholder="e.g. Five Below, Walmart" value="${esc(ex?ex.store:last)}"></div>
     <div class="row"><label class="btn primary simshot">📷 Add photo<input type="file" accept="image/*" id="compimg" multiple hidden></label><button class="btn primary" id="compnext" disabled>✓ Next product</button></div>
     <div id="comptray" class="row"></div>
+    <div class="row"><label class="btn simshot" title="Pick many photos from your camera roll. Each photo becomes its own product.">🖼 Bulk add: one photo per product<input type="file" accept="image/*" id="compbulk" multiple hidden></label><span class="status" id="compbulkst"></span></div>
     <div class="row">${downloads?`<button class="btn" id="compcsv">Trip report (CSV)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}${downloads?`<button class="btn ghost" id="compday">All stores today (CSV)</button>`:""}</div>
     <div id="complist" class="stack" data-trip=""></div>
     <div id="comptrips" class="stack" data-cur=""></div>`, body=>{
@@ -1456,7 +1457,7 @@ function openCompShop(tripId){
     $("#compstore").addEventListener("input",()=>{ storeLast=$("#compstore").value.trim(); });
     let tray=[];
     const drawTray=()=>{ if(!$("#comptray")) return; $("#comptray").innerHTML=tray.length?tray.map(b=>`<img class="pimg" src="${URL.createObjectURL(b)}" alt="">`).join("")+`<span class="note">${tray.length} photo${tray.length>1?"s":""} of this product. Add more, or tap Next product.</span>`:""; $("#compnext").disabled=!tray.length; };
-    const flush=()=>{ if(!tray.length) return; const imgs=tray; tray=[]; drawTray();
+    const flush=(one)=>{ const imgs=Array.isArray(one)?one:tray; if(!imgs.length) return; if(!Array.isArray(one)){ tray=[]; drawTray(); }
       const sv=storeV(), d0=new Date(); d0.setHours(0,0,0,0);
       const curT=trip?tripsOf().find(t=>t.id===trip):null, qStore=compQ.find(j=>j.trip===trip)?.store;
       const curStore=curT?curT.store:(qStore??null);
@@ -1468,7 +1469,12 @@ function openCompShop(tripId){
     };
     $("#compimg").addEventListener("change",async e=>{ const fs=[...e.target.files]; e.target.value=""; if(!fs.length) return;
       for(const f of fs){ if(tray.length>=6){ toast("Six photos is the most for one product"); break; } try{ tray.push(await shrink(f,2000)); }catch(err){} } drawTray(); });
-    $("#compnext").onclick=flush; sheetClose=flush;
+    $("#compnext").onclick=()=>flush(); sheetClose=()=>flush();
+    $("#compbulk").addEventListener("change",async e=>{ const fs=[...e.target.files]; e.target.value=""; if(!fs.length) return; const st=$("#compbulkst"), MAX=60;
+      flush();                                         // finish the product in the tray first
+      const take=fs.slice(0,MAX); let n=0;
+      for(const f of take){ try{ const b=await shrink(f,2000); flush([b]); n++; if(st) st.textContent=`Added ${n} of ${take.length}…`; }catch(err){} }
+      if(st) st.textContent=`${n} product${n===1?"":"s"} added. Claude is reading them one at a time; you can keep working.`+(fs.length>MAX?` Only the first ${MAX} were taken; add the rest in another batch.`:""); });
     body.addEventListener("change",async e=>{ const inp=e.target.closest("[data-findadd]"); if(!inp) return; const fs=[...inp.files]; inp.value=""; if(!fs.length) return;
       const x=arr(S.finds).find(y=>y.id===inp.dataset.findadd); if(!x) return; const imgs=[]; for(const f of fs.slice(0,5)){ try{ imgs.push(await shrink(f,2000)); }catch(err){} }
       compQ.push({trip:x.trip,store:x.store||"",imgs,findId:x.id}); compRefresh(); compRun(); });
