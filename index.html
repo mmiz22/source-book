@@ -588,6 +588,12 @@ main .wrap{padding-bottom:150px}
 .cmptable th{color:var(--muted);font-weight:500;min-width:96px;width:96px;white-space:nowrap}
 .cmptable tr:last-child th,.cmptable tr:last-child td{border-bottom:0}
 
+.simtray{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.simtray:empty{display:none}
+.simph{position:relative;display:inline-block}
+.simph .simthumb{width:84px;height:84px;object-fit:cover;border-radius:8px;display:block}
+.simrm{position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;border:0;background:var(--menu);color:#fff;font-size:.75rem;cursor:pointer;display:grid;place-items:center}
+
 </style>
 
 <header class="top">
@@ -1467,16 +1473,21 @@ function openCompShop(tripId){
 function openFindSimilar(){
   const canPhoto=!!(sample&&imgOK);
   openSheet("Find a similar product",`
-    <div class="note">${canPhoto?"Take a photo of the product (and its price tag if you can). Claude works out what it is and finds the closest items you've been quoted.":"Photo reading isn't available in this view. Describe the product instead."}</div>
-    ${canPhoto?`<label class="btn primary simshot">📷 Take or choose a photo<input type="file" accept="image/*" id="simimg" hidden></label>`:""}
-    <div id="simprev"></div>
+    <div class="note">${canPhoto?"Take up to 6 photos of the same product: front, back, the price tag. Then tap Find similar. Claude reads them together and finds the closest items you've been quoted.":"Photo reading isn't available in this view. Describe the product instead."}</div>
+    ${canPhoto?`<label class="btn primary simshot" id="simshot"><span id="simshotlbl">📷 Take or choose a photo</span><input type="file" accept="image/*" multiple id="simimg" hidden></label>`:""}
+    <div id="simprev" class="simtray"></div>
     <div class="field"><label for="simtxt">${canPhoto?"Anything to add? (optional)":"What is it?"}</label><input id="simtxt" placeholder="e.g. 3-in-1 magnetic wireless charging stand"></div>
     <div class="field"><label for="simprice">Store price $ (optional)</label><input id="simprice" inputmode="decimal" placeholder="Read from the tag if left blank"></div>
     <div class="field"><label for="simstore">Store (optional)</label><input id="simstore" placeholder="e.g. Five Below, Walmart" value="${esc((()=>{ try{ return localStorage.getItem("sb-laststore")||""; }catch{ return ""; } })())}"></div>
-    <div class="row"><button class="btn ${canPhoto?"":"primary"}" id="simgo" ${sample?"":"disabled"}>${canPhoto?"Search again":"Find similar"}</button><span class="status" id="simst"></span></div>
+    <div class="row"><button class="btn ${canPhoto?"":"primary"}" id="simgo" ${sample?"":"disabled"}>Find similar</button><span class="status" id="simst"></span></div>
     <div id="simres" class="stack"></div>
     <div id="simhist" class="stack">${findHistHtml()}</div>`, body=>{
-    let img=null, findId=null;
+    let imgs=[], img=null, findId=null;
+    const tray=()=>{ img=imgs[0]||null; const pv=$("#simprev"); if(!pv) return;
+      pv.innerHTML=imgs.map((b,i)=>`<span class="simph"><img class="simthumb" src="${URL.createObjectURL(b)}" alt="Photo ${i+1}"><button type="button" class="simrm" data-simrm="${i}" aria-label="Remove photo ${i+1}">✕</button></span>`).join("")+(imgs.length?`<span class="note">${imgs.length} of 6 photos</span>`:"");
+      const lb=$("#simshotlbl"), sh=$("#simshot"), go=$("#simgo"); if(lb) lb.textContent=imgs.length?(imgs.length>=6?"6 photos added":"📷 Add another photo"):"📷 Take or choose a photo";
+      if(sh){ sh.classList.toggle("primary",!imgs.length); sh.style.pointerEvents=imgs.length>=6?"none":""; sh.style.opacity=imgs.length>=6?".5":""; } if(go) go.classList.toggle("primary",!canPhoto||imgs.length>0); };
+    $("#simprev").addEventListener("click",e=>{ const x=e.target.closest("[data-simrm]"); if(!x) return; imgs.splice(+x.dataset.simrm,1); findId=null; tray(); });
     const store=()=>{ const v=($("#simstore")?.value||"").trim(); try{ localStorage.setItem("sb-laststore",v); }catch{} return v; };
     $("#simhist").addEventListener("click",async e=>{
       const del=e.target.closest("[data-finddel]"); if(del){ e.preventDefault(); if(del.dataset.sure!=="1"){ del.dataset.sure="1"; del.textContent="Tap again to remove"; return; } try{ await db.doc("storefinds/"+del.dataset.finddel).delete(); toast("Removed"); }catch(err){ toast("Couldn't remove"); } return; }
@@ -1488,7 +1499,8 @@ function openFindSimilar(){
       const go=$("#simgo"); go.disabled=true; st.className="status"; res.innerHTML="";
       try{
         st.textContent=img?"Looking at the photo…":"Working out what it is…";
-        let id; try{ id=await identifyProduct(img,text); }catch(e){ if(img&&(e?.code==="image_rejected"||e?.code==="prompt_too_large")){ img=await shrink(img,900); id=await identifyProduct(img,text); } else throw e; }
+        st.textContent=img?(imgs.length>1?`Looking at your ${imgs.length} photos…`:"Looking at the photo…"):"Working out what it is…";
+        let id; try{ id=await identifyProduct(imgs.length?imgs:null,text); }catch(e){ if(img&&(e?.code==="image_rejected"||e?.code==="prompt_too_large")){ imgs=await Promise.all(imgs.map(b=>shrink(b,900))); tray(); id=await identifyProduct(imgs,text); } else throw e; }
         if(!id||!(id.name||id.type)) throw {code:"unreadable"};
         const typed=num($("#simprice").value), tag=num(String(id.price||"").replace(/[^0-9.]/g,"")), price=typed&&typed>0?typed:(tag&&tag>0?tag:null);
         if(!typed&&price) $("#simprice").value=price.toFixed(2);
@@ -1496,7 +1508,7 @@ function openFindSimilar(){
         const head=`<div class="simid"><b>${esc(id.name||id.type)}</b>${id.brand?` · ${esc(id.brand)}`:""}${id.model?` · ${esc(id.model)}`:""}${tag?`<div><b>${usd(tag)}</b>${rp&&rp>tag?` <span class="note">regular ${usd(rp)}</span>`:""}${id.price_note?` <span class="note">${esc(id.price_note)}</span>`:""}${id.pack_count?` <span class="note">· ${esc(id.pack_count)} pack</span>`:""}${id.retailer?` <span class="note">· ${esc(id.retailer)}</span>`:""}</div>`:""}${id.package_text?`<div class="note">“${esc(String(id.package_text).slice(0,260))}”</div>`:""}${id.item_number?`<div class="note">Item / UPC: ${esc(id.item_number)}</div>`:""}${ALL_TYPES.includes(id.type)&&id.type!=="Other"?` · ${esc(id.type)}`:""}${arr(id.features).length?`<div class="note">${esc(arr(id.features).slice(0,6).join(" · "))}</div>`:""}<div class="note">Not what it is? Type what it is above and tap Search again.</div>${price?`<div class="note">Fit is checked against ${tag&&!typed?"the tag price":"the store price"} of ${usd(price)} (${setPct("customerPct",55)}% customer cost, ${setPct("marginPct",45)}% margin).</div>`:""}</div>`;
         const pool=similarPool(id).slice(0,SIM_POOL);
         const wp={name:id.name,type:id.type,brand:id.brand,features:id.features,store:store()};
-        if(!pool.length){ res.innerHTML=head+`<div class="empty"><strong>Nothing similar in your quotes</strong><span>None of your quoted items look like a ${esc(id.name||id.type)}. Look for a new factory below.</span></div>`+webBox(wp); st.textContent=""; findId=await saveFind(findId,id,img,price,rp,[],text,store()); wp.findId=findId; return; }
+        if(!pool.length){ res.innerHTML=head+`<div class="empty"><strong>Nothing similar in your quotes</strong><span>None of your quoted items look like a ${esc(id.name||id.type)}. Look for a new factory below.</span></div>`+webBox(wp); st.textContent=""; findId=await saveFind(findId,id,imgs.length?imgs:null,price,rp,[],text,store()); wp.findId=findId; return; }
         st.textContent=`Checked all ${S.quotes.reduce((n,q)=>n+arr(q.lines).length,0).toLocaleString()} quoted items. Comparing the ${pool.length} closest with your ${img?"photo":"description"}…`;
         let ranked=null; try{ ranked=await rankSimilar(id,pool,img); }catch(e){ try{ if(img) ranked=await rankSimilar(id,pool,null); }catch(e2){ ranked=null; } }
         let good, fallback=false;
@@ -1507,12 +1519,15 @@ function openFindSimilar(){
         res.querySelectorAll("[data-simopen]").forEach(el=>{ const open=()=>{ const sid=el.dataset.simopen; closeSheet(); openFactory(sid); };
           el.addEventListener("click",e=>{ if(e.target.closest("a")) return; open(); }); el.addEventListener("keydown",e=>{ if(e.key==="Enter") open(); }); });
         st.textContent="";
-        findId=await saveFind(findId,id,img,price,rp,good,text,store()); wp.findId=findId;
+        findId=await saveFind(findId,id,imgs.length?imgs:null,price,rp,good,text,store()); wp.findId=findId;
       }catch(e){ st.className="status err"; st.textContent=e?.code==="unreadable"?"Couldn't tell what the product is. Try a closer photo or type what it is.":"Couldn't search ("+(e?.code||"error")+"). Try again."; }
       finally{ go.disabled=false; }
     };
-    const fi=$("#simimg"); if(fi) fi.addEventListener("change",async e=>{ const f=e.target.files[0]; if(!f) return; findId=null; img=await shrink(f,2000);
-      const u=URL.createObjectURL(img); $("#simprev").innerHTML=`<img class="simthumb" src="${u}" alt="Your photo">`; run(); });
+    const fi=$("#simimg"); if(fi) fi.addEventListener("change",async e=>{ const fs=[...e.target.files]; e.target.value=""; if(!fs.length) return; findId=null;
+      const room=6-imgs.length; if(fs.length>room) toast("Up to 6 photos per product");
+      for(const f of fs.slice(0,room)) imgs.push(await shrink(f,imgs.length?1600:2000));
+      tray(); $("#simst").className="status"; $("#simst").textContent=imgs.length>1?"Add more photos of the same product, or tap Find similar.":"Add another photo (back, price tag) or tap Find similar."; });
+    tray();
     $("#simgo").onclick=run;
     $("#simtxt").addEventListener("keydown",e=>{ if(e.key==="Enter") run(); });
   });
