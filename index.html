@@ -594,6 +594,17 @@ main .wrap{padding-bottom:150px}
 .simph .simthumb{width:84px;height:84px;object-fit:cover;border-radius:8px;display:block}
 .simrm{position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;border:0;background:var(--menu);color:#fff;font-size:.75rem;cursor:pointer;display:grid;place-items:center}
 
+/* Comp shop has its own tab; on phones Samples moves into More to make room */
+#v-shop{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.7%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M3 4.500h2.300l2.200 10.300a1 1 0 0 0 1 .800h8.700a1 1 0 0 0 1-.800L19.700 8H6.400%22/%3E%3Ccircle cx=%229.500%22 cy=%2219%22 r=%221.300%22/%3E%3Ccircle cx=%2217%22 cy=%2219%22 r=%221.300%22/%3E%3C/svg%3E")}
+@media (max-width:979.98px){
+  body .searchrow .seg #v-s{display:none}
+  .seg:has(#v-s[aria-pressed="true"]) #v-more{color:var(--accent);font-weight:600}
+  body .searchrow .seg.mopen #v-s{display:flex;align-items:center;gap:12px;position:fixed;right:max(8px,env(safe-area-inset-right,0px));width:190px;height:46px;flex:none;padding:0 16px;font-size:.92rem;text-align:left;background:var(--menu);color:#fff;z-index:9;overflow:visible;font-weight:400;bottom:calc(env(safe-area-inset-bottom,0px) + 64px + 184px);border-radius:8px 8px 0 0}
+  body .searchrow .seg.mopen #v-s[aria-pressed="true"]{color:#7be3a8;font-weight:600}
+  body .searchrow .seg.mopen #v-s::before{margin:0;flex:none;width:21px;height:21px}
+  body .searchrow .seg.mopen #v-c{border-radius:0}
+}
+
 </style>
 
 <header class="top">
@@ -610,6 +621,7 @@ main .wrap{padding-bottom:150px}
         <button id="v-h" aria-pressed="false">Dashboard</button>
         <button id="v-f" aria-pressed="true">Factories</button>
         <button id="v-q" aria-pressed="false">Quotes</button>
+        <button id="v-shop" type="button" title="Shop a store: photograph products, save the store, see which factories quoted them">Comp shop</button>
         <button id="v-s" aria-pressed="false">Samples</button>
         <button id="v-c" aria-pressed="false">Catalogs</button>
         <button id="v-d" aria-pressed="false">Files</button>
@@ -2833,7 +2845,7 @@ async function exportCsv(){
 /* ---------- events ---------- */
 { let st=0; $("#search").addEventListener("input",e=>{ const v=e.target.value.trim(); clearTimeout(st); st=setTimeout(()=>{ if(S.q!==v){ S.sall=new Set(); S.sf={type:"",price:"",terms:"",photo:"",recent:""}; } S.q=v; render(); },v.length>=2?200:0); }); }
 const clearSearch=()=>{ if(!S.q&&!$("#search").value) return; S.q=""; $("#search").value=""; S.sall=new Set(); };
-$(".searchrow .seg").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b&&b.id!=="v-more") clearSearch(); },true);
+$(".searchrow .seg").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b&&b.id!=="v-more"&&b.id!=="v-shop") clearSearch(); },true);
 $("#cats").addEventListener("click",e=>{ const so=e.target.closest("[data-ssort]"); if(so){ S.ssort=so.dataset.ssort; try{ localStorage.setItem("sb-ssort",S.ssort); }catch{} render(); return; } if(e.target.closest("[data-sclear]")){ clearSearch(); render(); $("#search").focus(); } });
 $("#list").addEventListener("click",e=>{ const a=e.target.closest("[data-sall]"); if(a){ S.sall.add(a.dataset.sall); render(); return; }
   const f=e.target.closest("[data-sf]"); if(f){ S.sf[f.dataset.sf]=f.dataset.v; S.sall=new Set(); render(); return; } if(e.target.closest("[data-sfclear]")){ S.sf={type:"",price:"",terms:"",photo:"",recent:""}; render(); } });
@@ -3479,7 +3491,9 @@ document.addEventListener("error",e=>{ const t=e.target; if(t&&t.tagName==="IMG"
 /* a steady colour per factory name for rows with no picture */
 function avColor(name){ const P=["#07c160","#2f80ed","#e2852b","#8e5bd1","#d9534f","#1aa3a3","#c2478f","#5b6b8c","#7a9a1e","#b7791f"]; let h=0; for(const ch of String(name||"")) h=(h*31+ch.codePointAt(0))>>>0; return P[h%P.length]; }
 /* ---------- More tab on phones, and quick actions on the Scan card button ---------- */
-(()=>{ const seg=$(".searchrow .seg"), mb=$("#v-more"); if(seg&&mb){
+(()=>{ const shopb=$("#v-shop"); if(shopb) shopb.addEventListener("click",e=>{ e.stopPropagation(); $(".searchrow .seg")?.classList.remove("mopen");
+    if(document.getElementById("compshop")) openCompShop(); else toast(sample?"Comp shop needs the camera reading. Check Instant reading in the ＋ menu.":"Turn on Instant reading in the ＋ menu to use Comp shop on this device."); });
+  const seg=$(".searchrow .seg"), mb=$("#v-more"); if(seg&&mb){
     const set=o=>{ seg.classList.toggle("mopen",o); mb.setAttribute("aria-expanded",o?"true":"false"); };
     mb.addEventListener("click",e=>{ e.stopPropagation(); set(!seg.classList.contains("mopen")); });
     document.addEventListener("click",()=>set(false)); document.addEventListener("keydown",e=>{ if(e.key==="Escape") set(false); }); }
