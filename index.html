@@ -609,19 +609,40 @@ main .wrap{padding-bottom:150px}
 
 
 /* RFQ tracker */
-.rfsum{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px}
-.rfsum .k{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;min-width:104px}
-.rfsum .k b{display:block;font-size:1.25rem;line-height:1.2}.rfsum .k span{font-size:.74rem;color:var(--muted)}
-details.rfg{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin:8px 0;box-shadow:var(--shadow)}
-details.rfg>summary{cursor:pointer;list-style:none;padding:11px 12px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-weight:600}
+.rfhero{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:2px 0 14px;box-shadow:var(--shadow)}
+.rfhero .big{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.rfhero .big b{font-size:1.7rem;line-height:1;letter-spacing:-.02em}
+.rfhero .big span{color:var(--muted);font-size:.84rem}
+.rfbar{display:flex;height:8px;border-radius:99px;overflow:hidden;background:var(--sunk);margin:12px 0 10px}
+.rfbar i{display:block;height:100%}
+.rfbar .quoted,.rfdot.quoted{background:#07c160}.rfbar .replied,.rfdot.replied{background:#e0a526}.rfbar .waiting,.rfdot.waiting{background:#e2574c}.rfbar .made,.rfdot.made{background:#a9a593}
+.rfleg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px}
+.rfleg button{all:unset;cursor:pointer;display:block;border-radius:10px;padding:6px 8px;margin:-2px -4px}
+.rfleg button:hover,.rfleg button[aria-pressed="true"]{background:var(--hover)}
+.rfleg b{display:block;font-size:1.05rem;line-height:1.25}
+.rfleg span{font-size:.72rem;color:var(--muted);display:flex;align-items:center;gap:5px}
+.rfdot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
+details.rfg{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin:10px 0;box-shadow:var(--shadow);overflow:hidden}
+details.rfg>summary{cursor:pointer;list-style:none;padding:12px 14px 11px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center}
 details.rfg>summary::-webkit-details-marker{display:none}
-details.rfg>summary .cnt{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;font-weight:400}
-.rfrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:9px 12px;border-top:1px solid var(--line);cursor:pointer}
+details.rfg>summary .ttl{font-weight:650;min-width:0;overflow-wrap:anywhere;line-height:1.3}
+details.rfg>summary .meta{grid-column:1;font-size:.76rem;color:var(--muted)}
+details.rfg>summary .chev{grid-row:1/3;grid-column:2;width:22px;height:22px;display:grid;place-items:center;color:var(--muted);transition:transform .15s}
+details.rfg[open]>summary .chev{transform:rotate(90deg)}
+details.rfg>summary .rfbar{grid-column:1/-1;height:5px;margin:9px 0 0}
+details.rfg>summary:hover{background:var(--pane)}
+.rfrow{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:1px 10px;padding:10px 14px;border-top:1px solid var(--line);cursor:pointer;align-items:center}
 .rfrow:hover{background:var(--hover)}
-.rfrow .nm{font-weight:600;min-width:0;overflow-wrap:anywhere}.rfrow .dt{font-size:.78rem;color:var(--muted);grid-column:1/-1}
-.rfpill{font-size:.72rem;border-radius:99px;padding:2px 9px;white-space:nowrap;align-self:start;border:1px solid var(--line)}
-.rfpill.quoted{background:#e3f6ea;color:#0a6b35;border-color:#bfe6cd}.rfpill.replied{background:#fff3d6;color:#7a5600;border-color:#f0dca0}.rfpill.waiting{background:#fde8e6;color:#9a2a1f;border-color:#f3c4bf}.rfpill.made{background:var(--sunk);color:var(--muted)}
-:root[data-theme="dark"] .rfpill.quoted{background:#123a24;color:#8fe0ae;border-color:#1f5a39}:root[data-theme="dark"] .rfpill.replied{background:#3d3212;color:#f0cf7a;border-color:#5c4c1c}:root[data-theme="dark"] .rfpill.waiting{background:#3f1b18;color:#f2a69e;border-color:#63302b}
+.rfrow .av{grid-row:1/3;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#fff;font-weight:650;font-size:.9rem}
+.rfrow .nm{font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rfrow .dt{grid-column:2/-1;font-size:.76rem;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rfrow .dt b{color:var(--fg);font-weight:600}
+.rfrow .nt{grid-column:2/-1;font-size:.74rem;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
+.rfpill{font-size:.7rem;border-radius:99px;padding:2px 9px;white-space:nowrap;border:1px solid transparent;font-weight:550;display:inline-flex;align-items:center;gap:5px}
+.rfpill.quoted{background:#e3f6ea;color:#0a6b35}.rfpill.replied{background:#fff3d6;color:#7a5600}.rfpill.waiting{background:#fde8e6;color:#9a2a1f}.rfpill.made{background:var(--sunk);color:var(--muted)}
+:root[data-theme="dark"] .rfpill.quoted{background:#123a24;color:#8fe0ae}:root[data-theme="dark"] .rfpill.replied{background:#3d3212;color:#f0cf7a}:root[data-theme="dark"] .rfpill.waiting{background:#3f1b18;color:#f2a69e}
+.rfmore{all:unset;cursor:pointer;display:block;width:100%;box-sizing:border-box;text-align:center;padding:9px;border-top:1px solid var(--line);font-size:.8rem;color:var(--accent);font-weight:600}
+.rfmore:hover{background:var(--hover)}
 </style>
 
 <header class="top">
@@ -2444,31 +2465,46 @@ function rfqEntries(){
 function rfqCtl(){
   const E=rfqEntries(), c=k=>E.filter(e=>k==="all"||e.status===k).length;
   return `<span class="vtog" role="group" aria-label="Group by"><button data-rgrp="rfq" aria-pressed="${S.rfgrp!=="fac"}">By RFQ</button><button data-rgrp="fac" aria-pressed="${S.rfgrp==="fac"}">By factory</button></span>`+
-    [["all","All"],["waiting","Waiting for reply"],["replied","Replied, no prices"],["quoted","Quoted"],["made","Built in app"]].filter(([k])=>k==="all"||c(k)).map(([k,t])=>`<button class="chip" data-rst="${k}" aria-pressed="${S.rfst===k}">${t}<span class="n">${c(k)}</span></button>`).join("");
+    [["all","All"],["waiting","Waiting"],["replied","No prices"],["quoted","Quoted"],["made","Built in app"]].filter(([k])=>k==="all"||c(k)).map(([k,t])=>`<button class="chip" data-rst="${k}" aria-pressed="${S.rfst===k}">${t}<span class="n">${c(k)}</span></button>`).join("")+
+    `<select id="rfsortsel" class="chip" aria-label="Order"><option value="latest" ${S.rfsort!=="wait"?"selected":""}>Latest first</option><option value="wait" ${S.rfsort==="wait"?"selected":""}>Most waiting first</option></select>`;
 }
 function renderRfqs(L){
   const all=rfqEntries();
   if(!all.length){ L.innerHTML=`<div class="empty"><strong>No RFQs tracked yet</strong><span>RFQs you send on WeChat or email are logged here when the Source Book is updated, and RFQs you build in the app show up automatically.</span></div>`; return; }
   const E=all.filter(e=>S.rfst==="all"||e.status===S.rfst);
-  const fmt=d=>{ const m=/^(\d{4})-(\d\d)-(\d\d)/.exec(d||""); return m?`${+m[2]}/${+m[3]}/${m[1].slice(2)}`:""; };
-  const qinfo=e=>{ const ls=arr(e.quoteIds).flatMap(id=>{ const q=S.quotes.find(x=>x.id===id); return q?arr(q.lines).filter(l=>String(l.price??"").trim()!==""&&isFinite(parseFloat(l.price))):[]; }); if(!ls.length) return ""; const ps=ls.map(l=>parseFloat(l.price)); const lo=Math.min(...ps), hi=Math.max(...ps); return `${ls.length} item${ls.length>1?"s":""} · ${lo===hi?m$(lo):m$(lo)+"–"+m$(hi)}`; };
-  const m$=n=>"$"+n.toFixed(2); const last=e=>e.responded||e.sent||"";
+  const fmt=d=>{ const m=/^(\d{4})-(\d\d)-(\d\d)/.exec(d||""); return m?`${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m[2]-1]} ${+m[3]}`:""; };
+  const m$=n=>"$"+n.toFixed(2);
+  const qinfo=e=>{ const ls=arr(e.quoteIds).flatMap(id=>{ const q=S.quotes.find(x=>x.id===id); return q?arr(q.lines).filter(l=>String(l.price??"").trim()!==""&&isFinite(parseFloat(l.price))):[]; }); if(!ls.length) return ""; const ps=ls.map(l=>parseFloat(l.price)); const lo=Math.min(...ps), hi=Math.max(...ps); return `<b>${ls.length} item${ls.length>1?"s":""}</b> · ${lo===hi?m$(lo):m$(lo)+"–"+m$(hi)}`; };
+  const last=e=>e.responded||e.sent||"";
   const days=d=>{ const t=Date.parse(d); return isFinite(t)?Math.max(0,Math.round((Date.now()-t)/864e5)):null; };
-  const row=(e,label)=>{ const s=S.sup.get(e.supplierId)||{}; const qi=qinfo(e); const w=e.status==="waiting"&&e.sent?days(e.sent):null;
-    return `<div class="rfrow" data-open="${esc(e.supplierId)}" tabindex="0" role="button"><div class="nm">${esc(label)}</div><span class="rfpill ${esc(e.status)}">${esc(RFST[e.status]||e.status)}${w!=null?` · ${w}d`:""}</span><div class="dt">${[e.sent?`Sent ${fmt(e.sent)}${e.sentVia?" on "+esc(e.sentVia):""}`:"", e.responded?`Replied ${fmt(e.responded)}`:"", qi, arr(e.docIds).length?`${arr(e.docIds).length} file${arr(e.docIds).length>1?"s":""}`:"", e.status==="waiting"||e.app?esc(String(e.note||"").slice(0,140)):""].filter(Boolean).join(" · ")}</div></div>`; };
+  const ago=n=>n==null?"":n<1?"today":n<60?`${n}d`:`${Math.round(n/30)}mo`;
+  const ST=["quoted","replied","waiting","made"], LBL={quoted:"Quoted",replied:"No prices",waiting:"Waiting",made:"Built in app"};
+  const bar=list=>{ const n=list.length||1; return `<div class="rfbar">${ST.map(st=>{ const c=list.filter(e=>e.status===st).length; return c?`<i class="${st}" style="width:${(c/n*100).toFixed(2)}%" title="${c} ${LBL[st].toLowerCase()}"></i>`:""; }).join("")}</div>`; };
+  const clean=t=>String(t||"").replace(/\[(?:WeChat|Email|Alibaba|Global Sources)[^\]]*\]\s*/g,"").replace(/^Added from WeChat\.\s*/,"").trim();
+  const row=(e,label)=>{ const qi=qinfo(e); const w=e.status==="waiting"&&e.sent?days(e.sent):null;
+    const bits=[e.sent?`Sent ${fmt(e.sent)}${e.sentVia?" · "+esc(e.sentVia):""}`:"", e.responded?`Replied ${fmt(e.responded)}`:"", qi, !qi&&arr(e.docIds).length?`${arr(e.docIds).length} file${arr(e.docIds).length>1?"s":""}`:""].filter(Boolean).join(" &nbsp;·&nbsp; ");
+    const nt=(e.status==="waiting"||e.app)?clean(e.note).slice(0,150):"";
+    return `<div class="rfrow" data-open="${esc(e.supplierId)}" tabindex="0" role="button"><div class="av" style="background:${avColor(label)}">${esc((String(label).match(/[A-Za-z0-9一-鿿]/)||["?"])[0].toUpperCase())}</div><div class="nm">${esc(label)}</div><span class="rfpill ${esc(e.status)}">${esc(LBL[e.status]||e.status)}${w!=null?` · ${ago(w)}`:""}</span><div class="dt">${bits||"No dates on record"}</div>${nt?`<div class="nt">${esc(nt)}</div>`:""}</div>`; };
   const facs=new Set(all.map(e=>e.supplierId)), progs=new Set(all.map(e=>e.program));
-  const k=(n,t)=>`<div class="k"><b>${n}</b><span>${t}</span></div>`;
-  const sum=`<div class="rfsum">${k(progs.size,"RFQs")}${k(facs.size,"factories")}${k(all.filter(e=>e.status==="quoted").length,"quoted")}${k(all.filter(e=>e.status==="replied").length,"replied, no prices")}${k(all.filter(e=>e.status==="waiting").length,"waiting for reply")}</div>`;
+  const cnt=st=>all.filter(e=>e.status===st).length;
+  const hero=`<div class="rfhero"><div class="big"><b>${progs.size}</b><span>RFQs sent to</span><b>${facs.size}</b><span>factories</span></div>${bar(all)}<div class="rfleg">${ST.filter(st=>cnt(st)).map(st=>`<button data-rst2="${st}" aria-pressed="${S.rfst===st}"><b>${cnt(st)}</b><span><i class="rfdot ${st}"></i>${LBL[st]}</span></button>`).join("")}</div></div>`;
   const G=new Map(); const key=e=>S.rfgrp==="fac"?e.supplierId:e.program;
   E.forEach(e=>{ const kk=key(e); if(!G.has(kk)) G.set(kk,[]); G.get(kk).push(e); });
   const ord={waiting:0,replied:1,made:2,quoted:3};
-  const groups=[...G].map(([kk,list])=>({kk,list,latest:list.map(last).sort().pop()||""})).sort((a,b)=>b.latest.localeCompare(a.latest)||String(a.kk).localeCompare(String(b.kk)));
-  const pills=list=>["waiting","replied","quoted","made"].map(st=>{ const n=list.filter(e=>e.status===st).length; return n?`<span class="rfpill ${st}">${n} ${st==="replied"?"no prices":st==="made"?"built":st}</span>`:""; }).join("");
-  const cut=new Date(Date.now()-45*864e5).toISOString().slice(0,10);
-  L.innerHTML=sum+(E.length?groups.map((g,i)=>{ const title=S.rfgrp==="fac"?(S.sup.get(g.kk)?.company||"Factory"):g.kk;
+  const nw=l=>l.filter(e=>e.status==="waiting").length;
+  const groups=[...G].map(([kk,list])=>({kk,list,latest:list.map(last).sort().pop()||""})).sort((a,b)=>(S.rfsort==="wait"?nw(b.list)-nw(a.list):0)||b.latest.localeCompare(a.latest)||String(a.kk).localeCompare(String(b.kk)));
+  const chev=`<span class="chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>`;
+  const openOne=S.rfst!=="all"&&groups.length<=12;
+  L.innerHTML=hero+(E.length?groups.map((g,i)=>{ const title=S.rfgrp==="fac"?(S.sup.get(g.kk)?.company||"Factory"):g.kk;
       const rows=g.list.sort((a,b)=>(ord[a.status]-ord[b.status])||String(S.sup.get(a.supplierId)?.company||"").localeCompare(String(S.sup.get(b.supplierId)?.company||"")));
-      return `<details class="rfg" ${S.rfst!=="all"||groups.length<=6||(g.latest>=cut&&i<8)?"open":""}><summary>${esc(title)}<span class="note">${S.rfgrp==="fac"?`${rows.length} RFQ${rows.length>1?"s":""}`:`${rows.length} factor${rows.length>1?"ies":"y"}`}${g.latest?" · latest "+fmt(g.latest):""}</span><span class="cnt">${pills(rows)}</span></summary>${rows.map(e=>row(e,S.rfgrp==="fac"?e.program:(S.sup.get(e.supplierId)?.company||"Factory"))).join("")}</details>`; }).join(""):`<div class="empty"><strong>Nothing in this group</strong></div>`)+
-    `<div class="note" style="margin:12px 2px">“Waiting” only covers RFQs that were logged when you sent them on WeChat or email. Tap a row to open the factory.</div>`;
+      const q=rows.filter(e=>e.status==="quoted").length, w=nw(rows);
+      const meta=[S.rfgrp==="fac"?`${rows.length} RFQ${rows.length>1?"s":""}`:`${rows.length} factor${rows.length>1?"ies":"y"}`, q?`${q} quoted`:"", w?`${w} waiting`:"", g.latest?fmt(g.latest)+(g.latest.slice(0,4)!==String(new Date().getFullYear())?" "+g.latest.slice(0,4):""):""].filter(Boolean).join(" · ");
+      const cap=S.rfopen?.has(g.kk)?rows.length:8;
+      return `<details class="rfg" data-rfk="${esc(g.kk)}" ${openOne||groups.length<=3||S.rfexp?.has(g.kk)?"open":""}><summary><span class="ttl">${esc(title)}</span>${chev}<span class="meta">${meta}</span>${bar(rows)}</summary>${rows.slice(0,cap).map(e=>row(e,S.rfgrp==="fac"?e.program:(S.sup.get(e.supplierId)?.company||"Factory"))).join("")}${rows.length>cap?`<button class="rfmore" data-rfmore="${esc(g.kk)}">Show ${rows.length-cap} more</button>`:""}</details>`; }).join(""):`<div class="empty"><strong>Nothing in this group</strong></div>`)+
+    `<div class="note" style="margin:14px 4px">“Waiting” means an RFQ was sent and no quote from that factory is on file yet. Tap a row to open the factory.</div>`;
+  L.querySelectorAll("details.rfg").forEach(d=>d.addEventListener("toggle",()=>{ S.rfexp=S.rfexp||new Set(); d.open?S.rfexp.add(d.dataset.rfk):S.rfexp.delete(d.dataset.rfk); }));
+  L.querySelectorAll("[data-rfmore]").forEach(b=>b.onclick=ev=>{ ev.stopPropagation(); S.rfopen=S.rfopen||new Set(); S.rfopen.add(b.dataset.rfmore); render(); });
+  L.querySelectorAll("[data-rst2]").forEach(b=>b.onclick=()=>{ S.rfst=S.rfst===b.dataset.rst2?"all":b.dataset.rst2; render(); });
 }
 const rfqsFor=id=>S.rfqs.filter(r=>r.supplierId===id||arr(r.supplierIds).includes(id)).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
 function cropToBlob(canvas,r,max=700){
@@ -2929,6 +2965,7 @@ $("#v-t").onclick=()=>{ S.view="t"; render(); };
 $("#v-r").onclick=()=>{ S.view="r"; render(); };
 $("#v-rfq").onclick=()=>{ S.view="rfq"; render(); };
 $("#cats").addEventListener("click",e=>{ const b=e.target.closest("[data-rst]"); if(b){ S.rfst=b.dataset.rst; render(); } const g=e.target.closest("[data-rgrp]"); if(g){ S.rfgrp=g.dataset.rgrp; render(); } });
+$("#cats").addEventListener("change",e=>{ if(e.target.id==="rfsortsel"){ S.rfsort=e.target.value; render(); } });
 $("#v-h").onclick=()=>{ S.view="h"; try{ localStorage.setItem("sb-view","h"); }catch{} render(); };
 $("#v-f").addEventListener("click",()=>{ try{ localStorage.setItem("sb-view","f"); }catch{} });
 $("#v-d").onclick=()=>{ S.view="d"; S.dcat=false; S.cat="All"; S.dtype="All"; render(); };
