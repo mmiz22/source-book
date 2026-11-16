@@ -641,6 +641,21 @@ details.rfg>summary:hover{background:var(--pane)}
 .rfpill{font-size:.7rem;border-radius:99px;padding:2px 9px;white-space:nowrap;border:1px solid transparent;font-weight:550;display:inline-flex;align-items:center;gap:5px}
 .rfpill.quoted{background:#e3f6ea;color:#0a6b35}.rfpill.replied{background:#fff3d6;color:#7a5600}.rfpill.waiting{background:#fde8e6;color:#9a2a1f}.rfpill.made{background:var(--sunk);color:var(--muted)}
 :root[data-theme="dark"] .rfpill.quoted{background:#123a24;color:#8fe0ae}:root[data-theme="dark"] .rfpill.replied{background:#3d3212;color:#f0cf7a}:root[data-theme="dark"] .rfpill.waiting{background:#3f1b18;color:#f2a69e}
+.rfblank{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin:0 0 14px;box-shadow:var(--shadow);overflow:hidden}
+.rfblank>summary{cursor:pointer;list-style:none;padding:12px 14px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center}
+.rfblank>summary::-webkit-details-marker{display:none}
+.rfblank>summary .ttl{font-weight:650}.rfblank>summary .meta{font-size:.76rem;color:var(--muted);grid-column:1}
+.rfblank>summary .chev{grid-row:1/3;grid-column:2;width:22px;height:22px;display:grid;place-items:center;color:var(--muted);transition:transform .15s}
+.rfblank[open]>summary .chev{transform:rotate(90deg)}
+.rfbsub{padding:7px 14px 5px;font-size:.72rem;color:var(--muted);font-weight:600;letter-spacing:.02em;text-transform:uppercase;border-top:1px solid var(--line);background:var(--pane)}
+.rfbrow{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:1px 10px;padding:9px 14px;border-top:1px solid var(--line);align-items:center}
+.rfbrow .xl{grid-row:1/3;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:#e3f6ea;color:#0a6b35;font-weight:700;font-size:.68rem}
+:root[data-theme="dark"] .rfbrow .xl{background:#123a24;color:#8fe0ae}
+.rfbrow .nm{font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.9rem}
+.rfbrow .dt{grid-column:2;font-size:.75rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rfbrow .btn{grid-row:1/3;grid-column:3}
+.rfginline{display:flex;align-items:center;gap:8px;padding:8px 14px;border-top:1px solid var(--line);background:var(--pane);font-size:.78rem;color:var(--muted)}
+.rfginline button{margin-left:auto}
 .rfmore{all:unset;cursor:pointer;display:block;width:100%;box-sizing:border-box;text-align:center;padding:9px;border-top:1px solid var(--line);font-size:.8rem;color:var(--accent);font-weight:600}
 .rfmore:hover{background:var(--hover)}
 </style>
@@ -2451,7 +2466,12 @@ function getExcelJS(){ if(!exceljsP) exceljsP=loadScript(EXCELJS).then(()=>windo
 S.rfqs=[];
 
 /* ---------- RFQ tracker: every RFQ sent and every factory reply ---------- */
-S.rfqlog=[]; S.rfst="all"; S.rfgrp="rfq";
+S.rfqlog=[]; S.rfst="all"; S.rfgrp="rfq"; S.rfblanks=[];
+async function rfqBlankDl(file,name,btn){ const old=btn?btn.textContent:""; if(btn){ btn.disabled=true; btn.textContent="Preparing…"; }
+  try{ const r=await fetch(blobUrl(file)); if(!r.ok) throw new Error("not found"); const blob=await r.blob();
+    if(downloads){ await downloads.save({filename:name,data:blob}); } else { const u=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),4000); } }
+  catch(e){ if(!(e?.code==="declined")) toast("Could not get that file. Check your connection and try again."); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent=old; } } }
 const RFST={quoted:"Quoted",replied:"Replied, no prices",waiting:"Waiting for reply",made:"Built in app"};
 function rfqEntries(){
   const out=S.rfqlog.filter(e=>S.sup.has(e.supplierId)).map(e=>({...e}));
@@ -2488,6 +2508,12 @@ function renderRfqs(L){
   const facs=new Set(all.map(e=>e.supplierId)), progs=new Set(all.map(e=>e.program));
   const cnt=st=>all.filter(e=>e.status===st).length;
   const hero=`<div class="rfhero"><div class="big"><b>${progs.size}</b><span>RFQs sent to</span><b>${facs.size}</b><span>factories</span></div>${bar(all)}<div class="rfleg">${ST.filter(st=>cnt(st)).map(st=>`<button data-rst2="${st}" aria-pressed="${S.rfst===st}"><b>${cnt(st)}</b><span><i class="rfdot ${st}"></i>${LBL[st]}</span></button>`).join("")}</div></div>`;
+  const BL=arr(S.rfblanks), fam=p=>String(p||"").split(" — ")[0];
+  const bfs=n=>n>=1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
+  const brow=b=>`<div class="rfbrow"><div class="xl">XLS</div><div class="nm" title="${esc(b.name)}">${esc(String(b.program||"").includes(" — ")?String(b.program).split(" — ").slice(1).join(" — "):b.name)}</div><div class="dt">${esc(b.name)} · ${bfs(num(b.size))}</div><button class="btn sm" data-rfb="${esc(b.file)}" data-rfbn="${esc(b.name)}">Download</button></div>`;
+  const bfams=new Map(); BL.forEach(b=>{ const k=fam(b.program); if(!bfams.has(k)) bfams.set(k,[]); bfams.get(k).push(b); });
+  const chev0=`<span class="chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>`;
+  const blanks=BL.length?`<details class="rfblank" ${S.rfbopen?"open":""}><summary><span class="ttl">Blank RFQ files</span>${chev0}<span class="meta">${BL.length} sheet${BL.length>1?"s":""} ready to send · ${[...bfams.keys()].map(esc).join(", ")}</span></summary>${[...bfams].map(([k,l])=>`<div class="rfbsub">${esc(k)}</div>`+l.sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(brow).join("")).join("")}</details>`:"";
   const G=new Map(); const key=e=>S.rfgrp==="fac"?e.supplierId:e.program;
   E.forEach(e=>{ const kk=key(e); if(!G.has(kk)) G.set(kk,[]); G.get(kk).push(e); });
   const ord={waiting:0,replied:1,made:2,quoted:3};
@@ -2495,14 +2521,16 @@ function renderRfqs(L){
   const groups=[...G].map(([kk,list])=>({kk,list,latest:list.map(last).sort().pop()||""})).sort((a,b)=>(S.rfsort==="wait"?nw(b.list)-nw(a.list):0)||b.latest.localeCompare(a.latest)||String(a.kk).localeCompare(String(b.kk)));
   const chev=`<span class="chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>`;
   const openOne=S.rfst!=="all"&&groups.length<=12;
-  L.innerHTML=hero+(E.length?groups.map((g,i)=>{ const title=S.rfgrp==="fac"?(S.sup.get(g.kk)?.company||"Factory"):g.kk;
+  L.innerHTML=hero+blanks+(E.length?groups.map((g,i)=>{ const title=S.rfgrp==="fac"?(S.sup.get(g.kk)?.company||"Factory"):g.kk;
       const rows=g.list.sort((a,b)=>(ord[a.status]-ord[b.status])||String(S.sup.get(a.supplierId)?.company||"").localeCompare(String(S.sup.get(b.supplierId)?.company||"")));
       const q=rows.filter(e=>e.status==="quoted").length, w=nw(rows);
       const meta=[S.rfgrp==="fac"?`${rows.length} RFQ${rows.length>1?"s":""}`:`${rows.length} factor${rows.length>1?"ies":"y"}`, q?`${q} quoted`:"", w?`${w} waiting`:"", g.latest?fmt(g.latest)+(g.latest.slice(0,4)!==String(new Date().getFullYear())?" "+g.latest.slice(0,4):""):""].filter(Boolean).join(" · ");
       const cap=S.rfopen?.has(g.kk)?rows.length:8;
-      return `<details class="rfg" data-rfk="${esc(g.kk)}" ${openOne||groups.length<=3||S.rfexp?.has(g.kk)?"open":""}><summary><span class="ttl">${esc(title)}</span>${chev}<span class="meta">${meta}</span>${bar(rows)}</summary>${rows.slice(0,cap).map(e=>row(e,S.rfgrp==="fac"?e.program:(S.sup.get(e.supplierId)?.company||"Factory"))).join("")}${rows.length>cap?`<button class="rfmore" data-rfmore="${esc(g.kk)}">Show ${rows.length-cap} more</button>`:""}</details>`; }).join(""):`<div class="empty"><strong>Nothing in this group</strong></div>`)+
+      return `<details class="rfg" data-rfk="${esc(g.kk)}" ${openOne||groups.length<=3||S.rfexp?.has(g.kk)?"open":""}><summary><span class="ttl">${esc(title)}</span>${chev}<span class="meta">${meta}</span>${bar(rows)}</summary>${S.rfgrp!=="fac"?BL.filter(b=>b.program===g.kk).map(b=>`<div class="rfginline"><span>Blank sheet: ${esc(b.name)}</span><button class="btn sm ghost" data-rfb="${esc(b.file)}" data-rfbn="${esc(b.name)}">Download</button></div>`).join(""):""}${rows.slice(0,cap).map(e=>row(e,S.rfgrp==="fac"?e.program:(S.sup.get(e.supplierId)?.company||"Factory"))).join("")}${rows.length>cap?`<button class="rfmore" data-rfmore="${esc(g.kk)}">Show ${rows.length-cap} more</button>`:""}</details>`; }).join(""):`<div class="empty"><strong>Nothing in this group</strong></div>`)+
     `<div class="note" style="margin:14px 4px">“Waiting” means an RFQ was sent and no quote from that factory is on file yet. Tap a row to open the factory.</div>`;
   L.querySelectorAll("details.rfg").forEach(d=>d.addEventListener("toggle",()=>{ S.rfexp=S.rfexp||new Set(); d.open?S.rfexp.add(d.dataset.rfk):S.rfexp.delete(d.dataset.rfk); }));
+  L.querySelectorAll("[data-rfb]").forEach(b=>b.onclick=ev=>{ ev.stopPropagation(); ev.preventDefault(); rfqBlankDl(b.dataset.rfb,b.dataset.rfbn,b); });
+  { const bd=L.querySelector("details.rfblank"); if(bd) bd.addEventListener("toggle",()=>{ S.rfbopen=bd.open; }); }
   L.querySelectorAll("[data-rfmore]").forEach(b=>b.onclick=ev=>{ ev.stopPropagation(); S.rfopen=S.rfopen||new Set(); S.rfopen.add(b.dataset.rfmore); render(); });
   L.querySelectorAll("[data-rst2]").forEach(b=>b.onclick=()=>{ S.rfst=S.rfst===b.dataset.rst2?"all":b.dataset.rst2; render(); });
 }
@@ -3647,6 +3675,7 @@ render();
     e=>{ $("#list").innerHTML=`<div class="empty"><strong>Couldn't load factories</strong><span>Reload the page to try again.</span></div>`; });
   db.collection("quotes").onSnapshot(snap=>{ S.quotes=snap.docs.map(x=>({id:x.id,...x.data()})); S.loaded.q=true; render(); }, ()=>{});
   db.collection("rfqs").onSnapshot(snap=>{ S.rfqs=snap.docs.map(x=>({id:x.id,...x.data()})); if(S.view==="rfq") render(); }, ()=>{});
+  db.doc("settings/rfqblanks").onSnapshot(snap=>{ S.rfblanks=(snap.exists&&snap.data()?.list)||[]; if(S.view==="rfq") render(); }, ()=>{});
   db.collection("rfqlog").onSnapshot(snap=>{ S.rfqlog=snap.docs.map(x=>({id:x.id,...x.data()})); if(S.view==="rfq") render(); }, ()=>{});
   db.collection("samples").onSnapshot(snap=>{ S.samples=snap.docs.map(x=>({id:x.id,...x.data()})); render(); }, ()=>{});
   db.collection("storefinds").onSnapshot(snap=>{ S.finds=snap.docs.map(x=>({id:x.id,...x.data()})); const h=document.getElementById("simhist"); if(h) h.innerHTML=findHistHtml(); compRefresh(); }, ()=>{});
