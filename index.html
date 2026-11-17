@@ -603,10 +603,11 @@ main .wrap{padding-bottom:150px}
 @media (max-width:979.98px){
   body .searchrow .seg #v-s{display:none}
   .seg:has(#v-s[aria-pressed="true"]) #v-more{color:var(--accent);font-weight:600}
-  body .searchrow .seg.mopen #v-s{display:flex;align-items:center;gap:12px;position:fixed;right:max(8px,env(safe-area-inset-right,0px));width:190px;height:46px;flex:none;padding:0 16px;font-size:.92rem;text-align:left;background:var(--menu);color:#fff;z-index:9;overflow:visible;font-weight:400;bottom:calc(env(safe-area-inset-bottom,0px) + 64px + 184px);border-radius:8px 8px 0 0}
+  body .searchrow .seg.mopen #v-s{display:flex;align-items:center;gap:12px;position:fixed;right:max(8px,env(safe-area-inset-right,0px));width:190px;height:46px;flex:none;padding:0 16px;font-size:.92rem;text-align:left;background:var(--menu);color:#fff;z-index:9;overflow:visible;font-weight:400;bottom:calc(env(safe-area-inset-bottom,0px) + 64px + 230px);border-radius:8px 8px 0 0}
   body .searchrow .seg.mopen #v-s[aria-pressed="true"]{color:#7be3a8;font-weight:600}
   body .searchrow .seg.mopen #v-s::before{margin:0;flex:none;width:21px;height:21px}
   body .searchrow .seg.mopen #v-c{border-radius:0}
+  body .searchrow .seg.mopen #v-rfq{border-radius:0}
 }
 
 
@@ -2870,7 +2871,7 @@ function wireDocs(root,id){
     const d=S.docs.find(x=>x.id===b.dataset.dl); if(!d) return;
     b.disabled=true; const old=b.textContent; b.textContent="Preparing…";
     if(isExt(d.file)){ window.open(d.file,"_blank","noopener"); b.disabled=false; b.textContent=old; return; }
-    try{ const r=await fetch(blobUrl(d.file)); const blob=await r.blob(); let name=d.name||"file.pdf"; if(!/\.(pdf|png|jpe?g|webp|gif)$/i.test(name)) name+=".pdf"; await downloads.save({filename:name,data:blob}); }
+    try{ const r=await fetch(blobUrl(d.file)); const blob=await r.blob(); let name=d.name||"file.pdf"; if(!/\.[a-z0-9]{2,5}$/i.test(name)) name+=".pdf"; await downloads.save({filename:name,data:blob}); }
     catch(e){ if(e?.code && !["declined"].includes(e.code)) toast("Download didn't finish. Use the file link to open it instead."); }
     finally{ b.disabled=false; b.textContent=old; }
   });

@@ -429,12 +429,35 @@ function aiSettings() {
   };
 }
 
+// Plain-text answers (the message writer calls sample(prompt, opts) directly and expects { text }).
+async function aiText(prompt, opts = {}) {
+  const key = aiKey(); if (!key) throw aiErr("not_granted", "No Claude API key on this device");
+  let r;
+  try {
+    r = await fetch(AI_API + "/v1/messages", { method: "POST", headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+      body: JSON.stringify({ model: AI_MODELS[opts.modelTier] || AI_MODELS.default, max_tokens: 4000, messages: [{ role: "user", content: String(prompt) }] }) });
+  } catch (e) { throw aiErr("network", "Couldn't reach Claude"); }
+  if (!r.ok) {
+    let msg = ""; try { msg = (await r.json())?.error?.message || ""; } catch {}
+    if (r.status === 401 || r.status === 403) throw aiErr("not_granted", msg || "The Claude API key was not accepted");
+    if (r.status === 429) throw aiErr("rate_limited", msg);
+    if (r.status === 400 && /credit|billing|balance/i.test(msg)) throw aiErr("quota_exceeded", msg);
+    throw aiErr("failed", msg || ("Claude error " + r.status));
+  }
+  const j = await r.json();
+  const text = (j.content || []).filter(c => c.type === "text").map(c => c.text).join("").trim();
+  if (!text) throw aiErr("failed", "Claude sent an empty answer");
+  if (typeof opts.onText === "function") { try { opts.onText({ text }); } catch {} }
+  return { text };
+}
+const aiCall = Object.assign((prompt, opts) => aiText(prompt, opts), ai);
+
 window.claude = {
   use(name) {
     if (name === "db") return started.then(() => db);
     if (name === "assets") return started.then(() => assets);
     if (name === "downloads") return Promise.resolve(downloads);
-    if (name === "sample") return started.then(() => { if (aiKey()) return ai; throw new Error("sample needs a Claude API key"); });
+    if (name === "sample") return started.then(() => { if (aiKey()) return aiCall; throw new Error("sample needs a Claude API key"); });
     if (name === "user") return started.then(() => userNS);
     if (name === "mcp") return started.then(() => { if (aiKey()) return { async callTool() { const e = new Error("not used"); e.code = "tool_error"; throw e; } }; throw new Error("research needs a Claude API key"); });
     return Promise.reject(new Error(name + " is not available in the GitHub version"));
