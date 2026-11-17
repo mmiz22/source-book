@@ -128,7 +128,9 @@ main .wrap{padding-block:16px 120px;display:grid;gap:10px}
 .slip .name{font-weight:600;font-size:1rem;overflow-wrap:anywhere}
 .slip .cn{color:var(--muted);font-size:.85rem}
 .slip .meta{color:var(--muted);font-size:.84rem;overflow-wrap:anywhere}
-.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.tags{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:3px}
+.tags>.src,.tags>.qbadge,.tags>.stars{flex:none;white-space:nowrap}
+.tags>.tag{min-width:0}
 .tag{font-size:.76rem;background:var(--accent-soft);color:var(--accent);padding:3px 10px;border-radius:999px;font-weight:500}
 .src{font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid currentColor;color:var(--muted)}
 .src-WeChat{color:#1a9b4b}
