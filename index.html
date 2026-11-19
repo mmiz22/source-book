@@ -73,6 +73,20 @@ h1 span{color:var(--accent);font-style:italic;font-weight:500}
 .vbody{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:8px 4px calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;flex-direction:column;align-items:center;gap:8px;background:var(--sunk)}
 .vbody canvas,.vbody .vimg{background:#fff;box-shadow:var(--shadow);max-width:100%;display:block}
 .vbody .status,.vbody .note{padding:12px}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:6px}
+.mtile{position:relative;aspect-ratio:1;border:0;padding:0;border-radius:8px;overflow:hidden;background:#1b1d22;cursor:pointer;display:block;width:100%}
+.mtile img{width:100%;height:100%;object-fit:cover;display:block}
+.mtile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mtile .mplay{position:absolute;left:5px;bottom:5px;background:#000a;color:#fff;font-size:.72rem;font-weight:600;padding:2px 7px;border-radius:999px;line-height:1.4}
+.mtile.novid::before{content:"▶";position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:1.5rem;opacity:.85}
+.mmore{display:block;margin-top:8px}
+.vbody.mview{justify-content:center;background:#111;padding:0;overflow:hidden}
+.vbody.mview img,.vbody.mview video{max-width:100%;max-height:100%;object-fit:contain;display:block;min-height:0}
+.vbody.mview .status{color:#ddd;padding:12px 64px;text-align:center}
+.mnav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:64px;border:0;border-radius:8px;background:#0008;color:#fff;font-size:1.8rem;line-height:1;cursor:pointer;z-index:2}
+.mnav.prev{left:6px}.mnav.next{right:6px}
+.mfoot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px max(12px,env(safe-area-inset-left,0px)) calc(env(safe-area-inset-bottom,0px) + 8px);border-top:1px solid var(--line);font-size:.86rem}
+.mfoot .mcapt{flex:1;min-width:140px;overflow-wrap:anywhere}.mfoot input{flex:1;min-width:140px}
 
 /* ---------- wide screens: list on the left, detail pane on the right ---------- */
 @media (min-width:980px){
@@ -1706,6 +1720,7 @@ function openFactory(id){
       <div class="row" style="justify-content:space-between"><div class="label">Samples</div>${canWrite?`<button class="btn sm primary" id="adds">＋ Add sample</button>`:""}</div>
       ${samplesFor(id).length?samplesFor(id).map(x=>sampleCard(x,false)).join(""):`<div class="note">No samples from this factory yet.</div>`}
     </div>
+    ${mediaSection(id)}
     ${docSection(id,"catalog")}
     ${docSection(id,"file")}
     ${canWrite?`<div class="row"><button class="btn" id="editf">Edit factory</button><button class="btn danger" id="delf">Delete factory</button></div><div id="delbox"></div>`:""}`;
@@ -1717,7 +1732,7 @@ function openFactory(id){
     body.querySelectorAll("[data-copy]").forEach(b=>b.onclick=async()=>{ try{ await navigator.clipboard.writeText(b.dataset.copy); toast("Copied"); }catch{ toast("Select the text to copy it"); }});
     const aq=body.querySelector("#addq"); if(aq) aq.onclick=()=>openQuoteForm(id);
     const as=body.querySelector("#adds"); if(as) as.onclick=()=>openSampleForm(id);
-    wireDocs(body,id);
+    wireDocs(body,id); wireMedia(body,id);
     wireCards(body,s);
     const mb=body.querySelector("#msg"); if(mb) mb.onclick=()=>openMessage(id);
     const rb=body.querySelector("#rfqb"); if(rb) rb.onclick=()=>openRfq(id); const sb2=body.querySelector("#smpb"); if(sb2) sb2.onclick=()=>openRfq(id,null,null,"sample");
@@ -1756,7 +1771,7 @@ function openFactory(id){
       const box=body.querySelector("#delbox");
       box.innerHTML=`<div class="confirm"><span>Delete ${esc(name)} and its ${qs.length} quote${qs.length===1?"":"s"}? This can't be undone.</span><div class="row"><button class="btn danger sm" id="yes">Delete factory</button><button class="btn sm" id="no">Keep</button></div></div>`;
       box.querySelector("#no").onclick=()=>box.innerHTML="";
-      box.querySelector("#yes").onclick=async()=>{ try{ for(const q of qs) await db.doc("quotes/"+q.id).delete(); for(const x of samplesFor(id)) await db.doc("samples/"+x.id).delete(); for(const x of docsFor(id)) await db.doc("docs/"+x.id).delete(); await db.doc("suppliers/"+id).delete(); closeSheet(); toast("Factory deleted"); }catch(e){ toast("Couldn't delete: "+(e.code||"error")); } };
+      box.querySelector("#yes").onclick=async()=>{ try{ for(const q of qs) await db.doc("quotes/"+q.id).delete(); for(const x of samplesFor(id)) await db.doc("samples/"+x.id).delete(); for(const x of [...docsFor(id),...mediaFor(id)]) await db.doc("docs/"+x.id).delete(); await db.doc("suppliers/"+id).delete(); closeSheet(); toast("Factory deleted"); }catch(e){ toast("Couldn't delete: "+(e.code||"error")); } };
     };
   });
 }
@@ -2897,6 +2912,83 @@ function wireDocs(root,id){
   });
 }
 
+/* ---------- photos & videos per factory ---------- */
+const MEDIA_MAX=25e6, MEDIA_PAGE=24;
+let mediaShown={};
+function mediaFor(id){ return (S.media||[]).filter(d=>d.supplierId===id).sort((a,b)=>(b.takenAt||b.createdAt||0)-(a.takenAt||a.createdAt||0)||String(a.name||"").localeCompare(String(b.name||""))); }
+const fmtDur=s=>{ s=Math.round(num(s)||0); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); };
+function mediaSection(id){
+  const list=mediaFor(id), can=canWrite&&assets, lim=mediaShown[id]||MEDIA_PAGE, nv=list.filter(m=>m.mtype==="video").length;
+  return `<div class="sec" id="ds-media">
+    <div class="row" style="justify-content:space-between"><div class="label">Photos &amp; videos${list.length?` · ${list.length}`:""}${nv&&nv<list.length?` <span class="note">(${nv} video${nv>1?"s":""})</span>`:""}</div>${can?`<label class="btn sm primary">＋ Add photos or video<input type="file" accept="image/*,video/*" multiple hidden data-mup></label>`:""}</div>
+    ${list.length?`<div class="mgrid">${list.slice(0,lim).map((m,i)=>{ const v=m.mtype==="video", th=m.thumb||(v?"":m.file); return `<button class="mtile${v&&!th?" novid":""}" data-mi="${i}" aria-label="${esc((v?"Video: ":"Photo: ")+(m.caption||m.name||""))}">${th?`<img loading="lazy" src="${blobUrl(th)}" alt="">`:""}${v?`<span class="mplay">▶${m.dur?" "+fmtDur(m.dur):""}</span>`:""}</button>`; }).join("")}</div>${list.length>lim?`<button class="btn sm mmore" data-mmore>Show ${Math.min(MEDIA_PAGE*2,list.length-lim)} more</button>`:""}`:`<div class="note">No photos or videos yet.${can?" Add product, showroom or factory photos, and short videos up to 25 MB.":""}</div>`}
+    <span class="status" data-mst></span>
+  </div>`;
+}
+function refreshMedia(id){ const el=document.querySelector("#ds-media"); if(!el) return; const t=document.createElement("div"); t.innerHTML=mediaSection(id); const n=t.firstElementChild; const st=el.querySelector("[data-mst]"); if(st&&st.textContent){ const s2=n.querySelector("[data-mst]"); s2.textContent=st.textContent; s2.className=st.className; } el.replaceWith(n); wireMedia(n,id); }
+function videoPoster(file){ return new Promise(ok=>{ const v=document.createElement("video"); const url=URL.createObjectURL(file); let done=false;
+  const fin=r=>{ if(done) return; done=true; try{ URL.revokeObjectURL(url); }catch(e){} ok(r); };
+  setTimeout(()=>fin({dur:isFinite(v.duration)?v.duration:0,blob:null}),8000);
+  v.muted=true; v.playsInline=true; v.preload="auto"; v.src=url;
+  v.onerror=()=>fin({dur:0,blob:null});
+  v.onloadeddata=()=>{ try{ v.currentTime=Math.min(1,(v.duration||0)/2); }catch(e){ fin({dur:0,blob:null}); } };
+  v.onseeked=()=>{ try{ const k=Math.min(1,480/Math.max(v.videoWidth,v.videoHeight,1)); const c=document.createElement("canvas"); c.width=Math.max(1,Math.round(v.videoWidth*k)); c.height=Math.max(1,Math.round(v.videoHeight*k)); c.getContext("2d").drawImage(v,0,0,c.width,c.height); c.toBlob(b=>fin({dur:v.duration||0,blob:b}),"image/jpeg",0.8); }catch(e){ fin({dur:v.duration||0,blob:null}); } };
+}); }
+function wireMedia(root,id){
+  const sec=root.id==="ds-media"?root:root.querySelector("#ds-media"); if(!sec) return;
+  sec.querySelectorAll("[data-mi]").forEach(b=>b.onclick=()=>openMedia(id,+b.dataset.mi));
+  const more=sec.querySelector("[data-mmore]"); if(more) more.onclick=()=>{ mediaShown[id]=(mediaShown[id]||MEDIA_PAGE)+MEDIA_PAGE*2; refreshMedia(id); };
+  const inp=sec.querySelector("[data-mup]"); if(inp) inp.addEventListener("change",async e=>{
+    const say=(m,err)=>{ const st=document.querySelector("#ds-media [data-mst]"); if(st){ st.textContent=m; st.className="status"+(err?" err":""); } };
+    const files=[...e.target.files]; if(!files.length) return; let ok=0; const bad=[];
+    for(const [n,f] of files.entries()){
+      const isV=(f.type||"").startsWith("video/")||/\.(mp4|mov|m4v|webm)$/i.test(f.name||""), isI=(f.type||"").startsWith("image/")||/\.(jpe?g|png|heic|webp|gif)$/i.test(f.name||"");
+      if(!isV&&!isI){ bad.push(`${f.name}: only photos and videos go here.`); continue; }
+      if(isV&&f.size>MEDIA_MAX){ bad.push(`${f.name}: video is ${fsize(f.size)}. The limit is 25 MB; trim it or send a shorter clip.`); continue; }
+      say(`Uploading ${n+1} of ${files.length}: ${f.name}…`);
+      try{
+        const doc={supplierId:id,kind:"media",mtype:isV?"video":"photo",name:f.name||(isV?"video.mp4":"photo.jpg"),source:"Uploaded",takenAt:f.lastModified||Date.now(),createdAt:Date.now(),updatedAt:Date.now(),...(me?{addedBy:me}:{})};
+        if(isV){ const p=await videoPoster(f); const up=await assets.upload(f); doc.file=up.id; doc.size=up.sizeBytes||f.size; if(p.dur) doc.dur=Math.round(p.dur); if(p.blob){ try{ doc.thumb=(await assets.upload(p.blob)).id; }catch(e){} } }
+        else { const big=await shrink(f,2000); const up=await assets.upload(big); doc.file=up.id; doc.size=up.sizeBytes||big.size; try{ const sm=await shrink(big,420); if(sm&&sm.size<big.size) doc.thumb=(await assets.upload(sm)).id; }catch(e){} }
+        await db.collection("docs").doc().set(doc); ok++;
+      }catch(err){ bad.push(`${f.name}: couldn't upload${isV?" (the video may be too large)":""}. Try again.`); }
+    }
+    say(bad.join(" "),true); if(ok) toast(`${ok} ${ok>1?"items":"item"} added to Photos & videos.`);
+  });
+}
+function mediaMime(u8,name){ if(u8[4]===0x66&&u8[5]===0x74&&u8[6]===0x79&&u8[7]===0x70) return (u8[8]===0x71&&u8[9]===0x74)?"video/quicktime":"video/mp4"; if(u8[0]===0x1a&&u8[1]===0x45&&u8[2]===0xdf&&u8[3]===0xa3) return "video/webm"; if(u8[0]===0xff&&u8[1]===0xd8) return "image/jpeg"; if(u8[0]===0x89&&u8[1]===0x50) return "image/png"; if(u8[0]===0x47&&u8[1]===0x49) return "image/gif"; if(u8[0]===0x52&&u8[1]===0x49) return "image/webp"; return /\.(mp4|m4v)$/i.test(name||"")?"video/mp4":/\.mov$/i.test(name||"")?"video/quicktime":""; }
+let mediaUrl=null;
+async function openMedia(sid,i){
+  const list=mediaFor(sid); if(!list.length){ closeViewer(); return; }
+  i=((i%list.length)+list.length)%list.length; const m=list[i], tok=++viewTok, isV=m.mtype==="video";
+  if(mediaUrl){ try{ URL.revokeObjectURL(mediaUrl); }catch(e){} mediaUrl=null; }
+  const when=m.takenAt||m.createdAt;
+  $("#viewerRoot").innerHTML=`<div class="viewer" role="dialog" aria-modal="true" aria-label="${isV?"Video":"Photo"} ${i+1} of ${list.length}"><div class="vhead"><div class="vtitle">${esc(S.sup.get(sid)?.company||"Factory")} <span class="note" style="padding:0;font-weight:400">· ${i+1} of ${list.length}</span></div>${downloads?`<button class="btn sm ghost" id="vdl">Download</button>`:""}<button class="x" id="vx" aria-label="Close">✕</button></div>
+    <div class="vbody mview" id="vbody" style="position:relative"><div class="status">Opening…</div></div>
+    ${list.length>1?`<button class="mnav prev" id="mprev" aria-label="Previous">‹</button><button class="mnav next" id="mnext" aria-label="Next">›</button>`:""}
+    <div class="mfoot" id="mfoot"></div></div>`;
+  $("#vx").onclick=closeViewer;
+  const go=d=>openMedia(sid,i+d); if(list.length>1){ $("#mprev").onclick=()=>go(-1); $("#mnext").onclick=()=>go(1); }
+  const foot=$("#mfoot");
+  const drawFoot=()=>{ foot.innerHTML=`<div class="mcapt">${m.caption?`<strong>${esc(m.caption)}</strong> `:""}<span class="note" style="padding:0">${esc([m.caption?"":m.name,m.source?`from ${m.source}`:"",when?new Date(when).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"",fsize(m.size)].filter(Boolean).join(" · "))}</span></div>${canWrite?`<button class="btn sm ghost" id="mcap">${m.caption?"Edit caption":"Add caption"}</button><button class="btn sm ghost" id="mdel">Remove</button>`:""}`;
+    const cb=$("#mcap"); if(cb) cb.onclick=()=>{ foot.innerHTML=`<input id="mcapi" aria-label="Caption" maxlength="140" placeholder="What is this? e.g. Showroom, model PK03" value="${esc(m.caption||"")}"><button class="btn sm primary" id="mcaps">Save</button><button class="btn sm" id="mcapx">Cancel</button>`;
+      const inp=$("#mcapi"); inp.focus(); $("#mcapx").onclick=drawFoot; const save=async()=>{ const v=inp.value.trim(); try{ await db.doc("docs/"+m.id).update({caption:v,updatedAt:Date.now()}); m.caption=v; toast("Caption saved"); }catch(e){ toast("Couldn't save the caption."); } drawFoot(); }; $("#mcaps").onclick=save; inp.onkeydown=ev=>{ ev.stopPropagation(); if(ev.key==="Enter") save(); if(ev.key==="Escape") drawFoot(); }; };
+    const db_=$("#mdel"); if(db_) db_.onclick=()=>{ foot.innerHTML=`<span style="flex:1">Remove this ${isV?"video":"photo"} from the factory?</span><button class="btn danger sm" id="mdy">Remove</button><button class="btn sm" id="mdn">Keep</button>`; $("#mdn").onclick=drawFoot;
+      $("#mdy").onclick=async()=>{ try{ await db.doc("docs/"+m.id).delete(); S.media=(S.media||[]).filter(x=>x.id!==m.id); toast("Removed"); refreshMedia(sid); if(mediaFor(sid).length) openMedia(sid,Math.min(i,mediaFor(sid).length-1)); else closeViewer(); }catch(e){ toast("Couldn't remove: "+(e.code||"error")); drawFoot(); } }; }; };
+  drawFoot();
+  const body=$("#vbody"); let blob=null, mime="";
+  const dl=$("#vdl"); if(dl) dl.onclick=async()=>{ try{ if(!blob) return; let fn=m.name||(isV?"video":"photo"); if(!/\.[a-z0-9]{2,5}$/i.test(fn)) fn+=({"video/mp4":".mp4","video/quicktime":".mov","video/webm":".webm","image/png":".png","image/gif":".gif","image/webp":".webp"})[mime]||(isV?".mp4":".jpg"); await downloads.save({filename:fn,data:blob}); }catch(e){} };
+  try{
+    const r=await fetch(blobUrl(m.file)); if(!r.ok) throw new Error("http "+r.status); const raw=await r.blob(); if(tok!==viewTok) return;
+    const head=new Uint8Array(await raw.slice(0,16).arrayBuffer()); mime=mediaMime(head,m.name)||(isV?"video/mp4":"image/jpeg"); blob=new Blob([raw],{type:mime}); if(tok!==viewTok) return;
+    mediaUrl=URL.createObjectURL(blob);
+    if(mime.startsWith("video/")){ const v=document.createElement("video"); v.controls=true; v.playsInline=true; v.autoplay=true; v.src=mediaUrl; v.onerror=()=>{ if(tok===viewTok) body.innerHTML=`<div class="status">This video format can't play in the browser. Tap Download to watch it on your device.</div>`; }; body.replaceChildren(v); v.play().catch(()=>{}); }
+    else { const img=document.createElement("img"); img.alt=m.caption||m.name||""; img.src=mediaUrl; body.replaceChildren(img); }
+    let x0=null; body.ontouchstart=e=>{ x0=e.touches.length===1?e.touches[0].clientX:null; }; body.ontouchend=e=>{ if(x0==null||list.length<2||mime.startsWith("video/")) return; const dx=e.changedTouches[0].clientX-x0; if(Math.abs(dx)>60) go(dx<0?1:-1); x0=null; };
+  }catch(e){ if(tok===viewTok) body.innerHTML=`<div class="status">Couldn't open this ${isV?"video":"photo"}. Check your connection and try again.</div>`; }
+}
+document.addEventListener("keydown",e=>{ if(e.key!=="ArrowLeft"&&e.key!=="ArrowRight") return; const b=document.querySelector(e.key==="ArrowLeft"?"#mprev":"#mnext"); if(b&&!/INPUT|TEXTAREA/.test(document.activeElement?.tagName||"")){ e.preventDefault(); b.click(); } });
+
 /* ---------- samples ---------- */
 function samplesFor(id){ return S.samples.filter(x=>x.supplierId===id).sort((a,b)=>String(b.requested||"").localeCompare(String(a.requested||""))); }
 function daysSince(d){ if(!d) return null; const t=Date.parse(d); return isNaN(t)?null:Math.floor((Date.now()-t)/864e5); }
@@ -3682,7 +3774,7 @@ render();
   db.collection("rfqlog").onSnapshot(snap=>{ S.rfqlog=snap.docs.map(x=>({id:x.id,...x.data()})); if(S.view==="rfq") render(); }, ()=>{});
   db.collection("samples").onSnapshot(snap=>{ S.samples=snap.docs.map(x=>({id:x.id,...x.data()})); render(); }, ()=>{});
   db.collection("storefinds").onSnapshot(snap=>{ S.finds=snap.docs.map(x=>({id:x.id,...x.data()})); const h=document.getElementById("simhist"); if(h) h.innerHTML=findHistHtml(); compRefresh(); }, ()=>{});
-  db.collection("docs").onSnapshot(snap=>{ S.docs=snap.docs.map(x=>({id:x.id,...x.data()})); render(); if(detailId) refreshDocs(detailId); }, ()=>{});
+  db.collection("docs").onSnapshot(snap=>{ { const all=snap.docs.map(x=>({id:x.id,...x.data()})); S.docs=all.filter(d=>d.kind!=="media"); S.media=all.filter(d=>d.kind==="media"); } render(); if(detailId){ refreshDocs(detailId); refreshMedia(detailId); } }, ()=>{});
   db.doc("settings/defaults").onSnapshot(snap=>{ S.settings={...SET_DEFAULT,...(snap.exists?snap.data():{})}; render(); }, ()=>{});
   db.collection("ptypes").onSnapshot(snap=>{ const m=new Map(), ids=new Set(); snap.docs.forEach(d=>{ ids.add(d.id); const mp=d.data()?.map||{}; for(const k in mp) if(mp[k]&&mp[k].t) m.set(k,mp[k]); }); S.ptypes=m; S.ptypeDocs=ids; render(); }, ()=>{});
   db.collection("inbox").onSnapshot(snap=>{ S.inbox=snap.docs.map(x=>({id:x.id,...x.data()})); dropBadge(); const l=document.getElementById("db-list"); if(l) l.innerHTML=dropList(); }, ()=>{});
