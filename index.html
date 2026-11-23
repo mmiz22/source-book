@@ -1510,7 +1510,33 @@ async function compCsv(trip){
   for(const x of items){ const t=arr(x.matches)[0], r=+x.price||0, cust=r?r*cp:0, lc=t&&t.landed!==""&&t.landed!=null?+t.landed:null;
     rows.push([x.createdAt?new Date(x.createdAt).toLocaleDateString():"", x.store||"", x.name||x.type||"", x.brand||"", x.model||"", r||"", x.regularPrice||"", cust?cust.toFixed(2):"", t?.company||"", t?t.price:"", t?.incoterm||"", t?.moq||"", lc!=null?lc.toFixed(2):"", (cust&&lc!=null)?Math.round((cust-lc)/cust*100):"", t?.score?Math.round(t.score):"", new Set(arr(x.matches).map(m=>m.supplierId)).size||"", arr(x.features).join("; "), x.description||x.packageText||"", arr(x.keyPoints).join("; "), x.packaging||"", [x.color,x.colorsAvailable].filter(Boolean).join("; also "), x.material||"", x.itemNumber||"", arr(x.photos).length||(x.photo?1:0)]); }
   const store=many&&ids.length>1?"all-stores":(items[0].store||"store").replace(/[^A-Za-z0-9]+/g,"-");
-  try{ await downloads.save({filename:`comp-shop-${store}-${today()}.csv`, data:"\ufeff"+csv(rows)}); }catch(e){ if(e?.code&&e.code!=="declined"&&e.code!=="cancelled") toast("Report didn't save"); }
+  let blob=null;
+  try{ toast(`Building the report with photos (${items.length} product${items.length===1?"":"s"})…`); blob=await compXlsx(rows,items); }catch(e){ blob=null; }
+  try{ if(blob) await downloads.save({filename:`comp-shop-${store}-${today()}.xlsx`, data:blob});
+    else{ await downloads.save({filename:`comp-shop-${store}-${today()}.csv`, data:"\ufeff"+csv(rows)}); toast("Saved without photos: the Excel builder didn't load."); } }catch(e){ if(e?.code&&e.code!=="declined"&&e.code!=="cancelled") toast("Report didn't save"); }
+}
+/* Trip report as an Excel file: the CSV columns plus up to 3 photos per product (first photo in column A). */
+async function compXlsx(rows,items){
+  const EJ=await getExcelJS(); const wb=new EJ.Workbook(); wb.creator=S.settings.signCompany||"Premier Accessory Group";
+  const ws=wb.addWorksheet("Comp shop",{pageSetup:{orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0}});
+  const thin={style:"thin",color:{argb:"FFBFBFBF"}}, border={top:thin,left:thin,bottom:thin,right:thin};
+  const NPH=3, head=rows[0].slice(0,-1), W={"Product":30,"Features":40,"Description":44,"Key points":40,"Packaging":24,"Best factory":26,"Store":16,"Brand":16,"Model":14,"Color":18,"Material":16};
+  const cols=["Photo",...head,"Photo 2","Photo 3"]; const money=new Set(["Retail $","Regular $","Customer cost $","Quoted","Landed $"]);
+  ws.columns=cols.map(h=>({width:/^Photo/.test(h)?19:(W[h]||12)}));
+  const hr=ws.getRow(1); hr.height=30;
+  cols.forEach((h,i)=>{ const c=hr.getCell(i+1); c.value=h; c.font={bold:true,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF375623"}}; c.alignment={wrapText:true,vertical:"middle",horizontal:"center"}; c.border=border; });
+  for(let i=0;i<items.length;i++){
+    const x=items[i], vals=rows[i+1], rn=i+2, row=ws.getRow(rn); row.height=100;
+    head.forEach((h,j)=>{ const c=row.getCell(j+2), v=vals[j]; const n=(money.has(h)||/%$/.test(h)||h==="MOQ"||h==="Factories matched")&&v!==""&&v!=null&&isFinite(+v)?+v:null; c.value=n!=null?n:(v??""); if(n!=null&&money.has(h)) c.numFmt='"$"#,##0.00'; });
+    for(let c=1;c<=cols.length;c++){ const cell=row.getCell(c); cell.border=border; cell.alignment={wrapText:true,vertical:"middle",horizontal:"left"}; }
+    const phs=(arr(x.photos).length?arr(x.photos):(x.photo?[x.photo]:[])).slice(0,NPH);
+    for(let k=0;k<phs.length;k++){ try{ const b=await shrink(await (await fetch(blobUrl(phs[k]))).blob(),360); if(!/jpe?g|png/.test(b.type||"")) continue;
+        const id=wb.addImage({buffer:await b.arrayBuffer(),extension:(b.type||"").includes("png")?"png":"jpeg"}); const bm=await createImageBitmap(b); const f=Math.min(124/bm.width,124/bm.height,1);
+        const col=k===0?0:head.length+k;
+        ws.addImage(id,{tl:{col:col+0.06,row:rn-1+0.05},ext:{width:Math.round(bm.width*f),height:Math.round(bm.height*f)},editAs:"oneCell"}); }catch(e){} }
+  }
+  ws.views=[{state:"frozen",xSplit:1,ySplit:1}]; ws.autoFilter={from:{row:1,column:2},to:{row:1,column:head.length+1}};
+  return new Blob([await wb.xlsx.writeBuffer()],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
 }
 function openCompShop(tripId){
   let trip=tripId||null; const ex=trip?tripsOf().find(t=>t.id===trip):null;
@@ -1521,7 +1547,7 @@ function openCompShop(tripId){
     <div class="row"><label class="btn primary simshot">📷 Add photo<input type="file" accept="image/*" id="compimg" multiple hidden></label><button class="btn primary" id="compnext" disabled>✓ Next product</button></div>
     <div id="comptray" class="row"></div>
     <div class="row"><label class="btn simshot" title="Pick many photos from your camera roll. Each photo becomes its own product.">🖼 Bulk add: one photo per product<input type="file" accept="image/*" id="compbulk" multiple hidden></label><span class="status" id="compbulkst"></span></div>
-    <div class="row">${downloads?`<button class="btn" id="compcsv">Trip report (CSV)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}${downloads?`<button class="btn ghost" id="compday">All stores today (CSV)</button>`:""}</div>
+    <div class="row">${downloads?`<button class="btn" id="compcsv">Trip report (Excel with photos)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}${downloads?`<button class="btn ghost" id="compday">All stores today (Excel)</button>`:""}</div>
     <div id="complist" class="stack" data-trip=""></div>
     <div id="comptrips" class="stack" data-cur=""></div>`, body=>{
     const setTrip=t=>{ trip=t; if($("#complist")){ $("#complist").dataset.trip=t||""; $("#comptrips").dataset.cur=t||""; } compRefresh(); };
