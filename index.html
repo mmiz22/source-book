@@ -611,6 +611,8 @@ main .wrap{padding-bottom:150px}
 .simph{position:relative;display:inline-block}
 .simph .simthumb{width:84px;height:84px;object-fit:cover;border-radius:8px;display:block}
 .simrm{position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;border:0;background:var(--menu);color:#fff;font-size:.75rem;cursor:pointer;display:grid;place-items:center}
+.simrm.sure{width:auto;padding:0 8px;border-radius:12px;background:#c62828;font-weight:600}
+.findphs{gap:12px;padding-top:6px}
 
 /* Comp shop has its own tab; on phones Samples moves into More to make room */
 #v-shop{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.7%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M3 4.500h2.300l2.200 10.300a1 1 0 0 0 1 .800h8.700a1 1 0 0 0 1-.800L19.700 8H6.400%22/%3E%3Ccircle cx=%229.500%22 cy=%2219%22 r=%221.300%22/%3E%3Ccircle cx=%2217%22 cy=%2219%22 r=%221.300%22/%3E%3C/svg%3E")}
@@ -1463,7 +1465,7 @@ function compRowHtml(x){
     <div class="findwho"><b>${esc(x.name||x.type||"Product")}</b>${x.brand?` · ${esc(x.brand)}`:""}
       <div class="note">${retail?`Retail ${usd(retail)}${x.regularPrice&&+x.regularPrice>retail?` (regular ${usd(+x.regularPrice)})`:""}`:"No price read"}</div>
       <div class="note">${top?`Best: ${esc(top.company||"factory")} · ${esc(money(top.price,top.currency||"USD"))} ${esc(top.incoterm||"")}${lc!=null?` · landed ${usd(lc)}`:""}${mg!=null?` · <b>${Math.round(mg*100)}% margin</b>`:""}`:"No factory quoted this yet"}</div></div></summary>
-    ${arr(x.photos).length>1?`<div class="row">${arr(x.photos).map(ph=>`<img class="pimg" src="${esc(blobUrl(ph))}" alt="" loading="lazy">`).join("")}</div>`:""}
+    ${(()=>{ const phs=arr(x.photos).length?arr(x.photos):(x.photo?[x.photo]:[]); return phs.length?`<div class="row findphs">${phs.map((ph,i)=>`<span class="simph"><img class="pimg" src="${esc(blobUrl(ph))}" alt="Photo ${i+1}" loading="lazy">${canWrite?`<button type="button" class="simrm" data-findphrm="${esc(x.id)}" data-ph="${esc(ph)}" aria-label="Remove photo ${i+1}" title="Remove this photo">✕</button>`:""}</span>`).join("")}</div>`:""; })()}
     ${x.description?`<div class="note">${esc(x.description)}</div>`:(x.packageText?`<div class="note">${esc(x.packageText)}</div>`:"")}
     ${arr(x.keyPoints).length?`<div class="note"><b>Key points:</b> ${esc(arr(x.keyPoints).join(" · "))}</div>`:""}
     ${[x.packaging?`<b>Packaging:</b> ${esc(x.packaging)}`:"", x.color?`<b>Color:</b> ${esc(x.color)}${x.colorsAvailable?` (also ${esc(x.colorsAvailable)})`:""}`:"", x.material?`<b>Material:</b> ${esc(x.material)}`:"", x.model?`<b>Model:</b> ${esc(x.model)}`:"", x.itemNumber?`<b>Item #:</b> ${esc(x.itemNumber)}`:""].filter(Boolean).map(t=>`<div class="note">${t}</div>`).join("")}
@@ -1477,7 +1479,7 @@ function compListHtml(trip){
   const wait=compQ.filter(j=>j.trip===trip);
   const withM=items.filter(x=>arr(x.matches).length).length;
   return `<div class="label">${items.length} product${items.length===1?"":"s"} this trip${items.length?` · ${withM} with a factory match`:""}${wait.length?` · ${wait.length} being read`:""}</div>`+
-    wait.map(j=>`<div class="findrow"><div class="note">${j.err?`Couldn't read this photo (${esc(j.err)}).`:`Reading ${j.imgs.length>1?j.imgs.length+" photos":"photo"}…`}</div></div>`).join("")+items.map(compRowHtml).join("");
+    wait.map(j=>`<div class="findrow"><div class="note">${j.err?`Couldn't read this photo (${esc(j.err)}).`:(j.findId&&!j.imgs.length?"Reading this product again…":`Reading ${j.imgs.length>1?j.imgs.length+" photos":"photo"}…`)}</div></div>`).join("")+items.map(compRowHtml).join("");
 }
 function compRefresh(){ const el=document.getElementById("complist"); if(el) el.innerHTML=compListHtml(el.dataset.trip); const t=document.getElementById("comptrips"); if(t) t.innerHTML=compTripsHtml(t.dataset.cur); }
 function compTripsHtml(cur){ const ts=tripsOf().filter(t=>t.id!==cur); if(!ts.length) return "";
@@ -1508,7 +1510,33 @@ async function compCsv(trip){
   for(const x of items){ const t=arr(x.matches)[0], r=+x.price||0, cust=r?r*cp:0, lc=t&&t.landed!==""&&t.landed!=null?+t.landed:null;
     rows.push([x.createdAt?new Date(x.createdAt).toLocaleDateString():"", x.store||"", x.name||x.type||"", x.brand||"", x.model||"", r||"", x.regularPrice||"", cust?cust.toFixed(2):"", t?.company||"", t?t.price:"", t?.incoterm||"", t?.moq||"", lc!=null?lc.toFixed(2):"", (cust&&lc!=null)?Math.round((cust-lc)/cust*100):"", t?.score?Math.round(t.score):"", new Set(arr(x.matches).map(m=>m.supplierId)).size||"", arr(x.features).join("; "), x.description||x.packageText||"", arr(x.keyPoints).join("; "), x.packaging||"", [x.color,x.colorsAvailable].filter(Boolean).join("; also "), x.material||"", x.itemNumber||"", arr(x.photos).length||(x.photo?1:0)]); }
   const store=many&&ids.length>1?"all-stores":(items[0].store||"store").replace(/[^A-Za-z0-9]+/g,"-");
-  try{ await downloads.save({filename:`comp-shop-${store}-${today()}.csv`, data:"\ufeff"+csv(rows)}); }catch(e){ if(e?.code&&e.code!=="declined"&&e.code!=="cancelled") toast("Report didn't save"); }
+  let blob=null;
+  try{ toast(`Building the report with photos (${items.length} product${items.length===1?"":"s"})…`); blob=await compXlsx(rows,items); }catch(e){ blob=null; }
+  try{ if(blob) await downloads.save({filename:`comp-shop-${store}-${today()}.xlsx`, data:blob});
+    else{ await downloads.save({filename:`comp-shop-${store}-${today()}.csv`, data:"\ufeff"+csv(rows)}); toast("Saved without photos: the Excel builder didn't load."); } }catch(e){ if(e?.code&&e.code!=="declined"&&e.code!=="cancelled") toast("Report didn't save"); }
+}
+/* Trip report as an Excel file: the CSV columns plus up to 3 photos per product (first photo in column A). */
+async function compXlsx(rows,items){
+  const EJ=await getExcelJS(); const wb=new EJ.Workbook(); wb.creator=S.settings.signCompany||"Premier Accessory Group";
+  const ws=wb.addWorksheet("Comp shop",{pageSetup:{orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0}});
+  const thin={style:"thin",color:{argb:"FFBFBFBF"}}, border={top:thin,left:thin,bottom:thin,right:thin};
+  const NPH=3, head=rows[0].slice(0,-1), W={"Product":30,"Features":40,"Description":44,"Key points":40,"Packaging":24,"Best factory":26,"Store":16,"Brand":16,"Model":14,"Color":18,"Material":16};
+  const cols=["Photo",...head,"Photo 2","Photo 3"]; const money=new Set(["Retail $","Regular $","Customer cost $","Quoted","Landed $"]);
+  ws.columns=cols.map(h=>({width:/^Photo/.test(h)?19:(W[h]||12)}));
+  const hr=ws.getRow(1); hr.height=30;
+  cols.forEach((h,i)=>{ const c=hr.getCell(i+1); c.value=h; c.font={bold:true,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF375623"}}; c.alignment={wrapText:true,vertical:"middle",horizontal:"center"}; c.border=border; });
+  for(let i=0;i<items.length;i++){
+    const x=items[i], vals=rows[i+1], rn=i+2, row=ws.getRow(rn); row.height=100;
+    head.forEach((h,j)=>{ const c=row.getCell(j+2), v=vals[j]; const n=(money.has(h)||/%$/.test(h)||h==="MOQ"||h==="Factories matched")&&v!==""&&v!=null&&isFinite(+v)?+v:null; c.value=n!=null?n:(v??""); if(n!=null&&money.has(h)) c.numFmt='"$"#,##0.00'; });
+    for(let c=1;c<=cols.length;c++){ const cell=row.getCell(c); cell.border=border; cell.alignment={wrapText:true,vertical:"middle",horizontal:"left"}; }
+    const phs=(arr(x.photos).length?arr(x.photos):(x.photo?[x.photo]:[])).slice(0,NPH);
+    for(let k=0;k<phs.length;k++){ try{ const b=await shrink(await (await fetch(blobUrl(phs[k]))).blob(),360); if(!/jpe?g|png/.test(b.type||"")) continue;
+        const id=wb.addImage({buffer:await b.arrayBuffer(),extension:(b.type||"").includes("png")?"png":"jpeg"}); const bm=await createImageBitmap(b); const f=Math.min(124/bm.width,124/bm.height,1);
+        const col=k===0?0:head.length+k;
+        ws.addImage(id,{tl:{col:col+0.06,row:rn-1+0.05},ext:{width:Math.round(bm.width*f),height:Math.round(bm.height*f)},editAs:"oneCell"}); }catch(e){} }
+  }
+  ws.views=[{state:"frozen",xSplit:1,ySplit:1}]; ws.autoFilter={from:{row:1,column:2},to:{row:1,column:head.length+1}};
+  return new Blob([await wb.xlsx.writeBuffer()],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
 }
 function openCompShop(tripId){
   let trip=tripId||null; const ex=trip?tripsOf().find(t=>t.id===trip):null;
@@ -1519,7 +1547,7 @@ function openCompShop(tripId){
     <div class="row"><label class="btn primary simshot">📷 Add photo<input type="file" accept="image/*" id="compimg" multiple hidden></label><button class="btn primary" id="compnext" disabled>✓ Next product</button></div>
     <div id="comptray" class="row"></div>
     <div class="row"><label class="btn simshot" title="Pick many photos from your camera roll. Each photo becomes its own product.">🖼 Bulk add: one photo per product<input type="file" accept="image/*" id="compbulk" multiple hidden></label><span class="status" id="compbulkst"></span></div>
-    <div class="row">${downloads?`<button class="btn" id="compcsv">Trip report (CSV)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}${downloads?`<button class="btn ghost" id="compday">All stores today (CSV)</button>`:""}</div>
+    <div class="row">${downloads?`<button class="btn" id="compcsv">Trip report (Excel with photos)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}${downloads?`<button class="btn ghost" id="compday">All stores today (Excel)</button>`:""}</div>
     <div id="complist" class="stack" data-trip=""></div>
     <div id="comptrips" class="stack" data-cur=""></div>`, body=>{
     const setTrip=t=>{ trip=t; if($("#complist")){ $("#complist").dataset.trip=t||""; $("#comptrips").dataset.cur=t||""; } compRefresh(); };
@@ -1555,6 +1583,14 @@ function openCompShop(tripId){
     const db2=$("#compday"); if(db2) db2.onclick=()=>{ const d0=new Date(); d0.setHours(0,0,0,0); const ids=tripsOf().filter(t=>t.at>=d0.getTime()).map(t=>t.id); if(ids.length) compCsv(ids); else toast("No products today yet"); };
     const cb=$("#compcsv"); if(cb) cb.onclick=()=>{ if(trip) compCsv(trip); else toast("No products in this trip yet"); };
     body.addEventListener("click",async e=>{
+      const prm=e.target.closest("[data-findphrm]"); if(prm){ e.preventDefault();
+        if(prm.dataset.sure!=="1"){ body.querySelectorAll(".simrm.sure").forEach(b=>{ b.dataset.sure=""; b.classList.remove("sure"); b.textContent="✕"; }); prm.dataset.sure="1"; prm.classList.add("sure"); prm.textContent="Remove?"; return; }
+        const x=arr(S.finds).find(y=>y.id===prm.dataset.findphrm); if(!x) return;
+        const cur=arr(x.photos).length?arr(x.photos):(x.photo?[x.photo]:[]), photos=cur.filter(ph=>ph!==prm.dataset.ph); if(photos.length===cur.length) return;
+        try{ await db.doc("storefinds/"+x.id).update({photos,photo:photos[0]||"",updatedAt:Date.now()}); }catch(err){ toast("Couldn't remove the photo"); return; }
+        if(photos.length&&sample&&imgOK){ compQ.push({trip:x.trip,store:x.store||"",imgs:[],findId:x.id}); compRefresh(); compRun(); toast("Photo removed. Reading the product again from the photos that are left."); }
+        else toast(photos.length?"Photo removed":"Photo removed. Add the right photo to read this product again.");
+        return; }
       const del=e.target.closest("[data-finddel]"); if(del){ e.preventDefault(); if(del.dataset.sure!=="1"){ del.dataset.sure="1"; del.textContent="Tap again to remove"; return; } try{ await db.doc("storefinds/"+del.dataset.finddel).delete(); }catch(err){ toast("Couldn't remove"); } return; }
       const to=e.target.closest("[data-tripopen]"); if(to){ openCompShop(to.dataset.tripopen); return; }
       const tc=e.target.closest("[data-tripcsv]"); if(tc){ compCsv(tc.dataset.tripcsv); return; }
