@@ -611,6 +611,8 @@ main .wrap{padding-bottom:150px}
 .simph{position:relative;display:inline-block}
 .simph .simthumb{width:84px;height:84px;object-fit:cover;border-radius:8px;display:block}
 .simrm{position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;border:0;background:var(--menu);color:#fff;font-size:.75rem;cursor:pointer;display:grid;place-items:center}
+.simrm.sure{width:auto;padding:0 8px;border-radius:12px;background:#c62828;font-weight:600}
+.findphs{gap:12px;padding-top:6px}
 
 /* Comp shop has its own tab; on phones Samples moves into More to make room */
 #v-shop{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.7%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M3 4.500h2.300l2.200 10.300a1 1 0 0 0 1 .800h8.700a1 1 0 0 0 1-.800L19.700 8H6.400%22/%3E%3Ccircle cx=%229.500%22 cy=%2219%22 r=%221.300%22/%3E%3Ccircle cx=%2217%22 cy=%2219%22 r=%221.300%22/%3E%3C/svg%3E")}
@@ -1463,7 +1465,7 @@ function compRowHtml(x){
     <div class="findwho"><b>${esc(x.name||x.type||"Product")}</b>${x.brand?` · ${esc(x.brand)}`:""}
       <div class="note">${retail?`Retail ${usd(retail)}${x.regularPrice&&+x.regularPrice>retail?` (regular ${usd(+x.regularPrice)})`:""}`:"No price read"}</div>
       <div class="note">${top?`Best: ${esc(top.company||"factory")} · ${esc(money(top.price,top.currency||"USD"))} ${esc(top.incoterm||"")}${lc!=null?` · landed ${usd(lc)}`:""}${mg!=null?` · <b>${Math.round(mg*100)}% margin</b>`:""}`:"No factory quoted this yet"}</div></div></summary>
-    ${arr(x.photos).length>1?`<div class="row">${arr(x.photos).map(ph=>`<img class="pimg" src="${esc(blobUrl(ph))}" alt="" loading="lazy">`).join("")}</div>`:""}
+    ${(()=>{ const phs=arr(x.photos).length?arr(x.photos):(x.photo?[x.photo]:[]); return phs.length?`<div class="row findphs">${phs.map((ph,i)=>`<span class="simph"><img class="pimg" src="${esc(blobUrl(ph))}" alt="Photo ${i+1}" loading="lazy">${canWrite?`<button type="button" class="simrm" data-findphrm="${esc(x.id)}" data-ph="${esc(ph)}" aria-label="Remove photo ${i+1}" title="Remove this photo">✕</button>`:""}</span>`).join("")}</div>`:""; })()}
     ${x.description?`<div class="note">${esc(x.description)}</div>`:(x.packageText?`<div class="note">${esc(x.packageText)}</div>`:"")}
     ${arr(x.keyPoints).length?`<div class="note"><b>Key points:</b> ${esc(arr(x.keyPoints).join(" · "))}</div>`:""}
     ${[x.packaging?`<b>Packaging:</b> ${esc(x.packaging)}`:"", x.color?`<b>Color:</b> ${esc(x.color)}${x.colorsAvailable?` (also ${esc(x.colorsAvailable)})`:""}`:"", x.material?`<b>Material:</b> ${esc(x.material)}`:"", x.model?`<b>Model:</b> ${esc(x.model)}`:"", x.itemNumber?`<b>Item #:</b> ${esc(x.itemNumber)}`:""].filter(Boolean).map(t=>`<div class="note">${t}</div>`).join("")}
@@ -1477,7 +1479,7 @@ function compListHtml(trip){
   const wait=compQ.filter(j=>j.trip===trip);
   const withM=items.filter(x=>arr(x.matches).length).length;
   return `<div class="label">${items.length} product${items.length===1?"":"s"} this trip${items.length?` · ${withM} with a factory match`:""}${wait.length?` · ${wait.length} being read`:""}</div>`+
-    wait.map(j=>`<div class="findrow"><div class="note">${j.err?`Couldn't read this photo (${esc(j.err)}).`:`Reading ${j.imgs.length>1?j.imgs.length+" photos":"photo"}…`}</div></div>`).join("")+items.map(compRowHtml).join("");
+    wait.map(j=>`<div class="findrow"><div class="note">${j.err?`Couldn't read this photo (${esc(j.err)}).`:(j.findId&&!j.imgs.length?"Reading this product again…":`Reading ${j.imgs.length>1?j.imgs.length+" photos":"photo"}…`)}</div></div>`).join("")+items.map(compRowHtml).join("");
 }
 function compRefresh(){ const el=document.getElementById("complist"); if(el) el.innerHTML=compListHtml(el.dataset.trip); const t=document.getElementById("comptrips"); if(t) t.innerHTML=compTripsHtml(t.dataset.cur); }
 function compTripsHtml(cur){ const ts=tripsOf().filter(t=>t.id!==cur); if(!ts.length) return "";
@@ -1555,6 +1557,14 @@ function openCompShop(tripId){
     const db2=$("#compday"); if(db2) db2.onclick=()=>{ const d0=new Date(); d0.setHours(0,0,0,0); const ids=tripsOf().filter(t=>t.at>=d0.getTime()).map(t=>t.id); if(ids.length) compCsv(ids); else toast("No products today yet"); };
     const cb=$("#compcsv"); if(cb) cb.onclick=()=>{ if(trip) compCsv(trip); else toast("No products in this trip yet"); };
     body.addEventListener("click",async e=>{
+      const prm=e.target.closest("[data-findphrm]"); if(prm){ e.preventDefault();
+        if(prm.dataset.sure!=="1"){ body.querySelectorAll(".simrm.sure").forEach(b=>{ b.dataset.sure=""; b.classList.remove("sure"); b.textContent="✕"; }); prm.dataset.sure="1"; prm.classList.add("sure"); prm.textContent="Remove?"; return; }
+        const x=arr(S.finds).find(y=>y.id===prm.dataset.findphrm); if(!x) return;
+        const cur=arr(x.photos).length?arr(x.photos):(x.photo?[x.photo]:[]), photos=cur.filter(ph=>ph!==prm.dataset.ph); if(photos.length===cur.length) return;
+        try{ await db.doc("storefinds/"+x.id).update({photos,photo:photos[0]||"",updatedAt:Date.now()}); }catch(err){ toast("Couldn't remove the photo"); return; }
+        if(photos.length&&sample&&imgOK){ compQ.push({trip:x.trip,store:x.store||"",imgs:[],findId:x.id}); compRefresh(); compRun(); toast("Photo removed. Reading the product again from the photos that are left."); }
+        else toast(photos.length?"Photo removed":"Photo removed. Add the right photo to read this product again.");
+        return; }
       const del=e.target.closest("[data-finddel]"); if(del){ e.preventDefault(); if(del.dataset.sure!=="1"){ del.dataset.sure="1"; del.textContent="Tap again to remove"; return; } try{ await db.doc("storefinds/"+del.dataset.finddel).delete(); }catch(err){ toast("Couldn't remove"); } return; }
       const to=e.target.closest("[data-tripopen]"); if(to){ openCompShop(to.dataset.tripopen); return; }
       const tc=e.target.closest("[data-tripcsv]"); if(tc){ compCsv(tc.dataset.tripcsv); return; }
