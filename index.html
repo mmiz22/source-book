@@ -1483,7 +1483,7 @@ function compListHtml(trip){
 }
 function compRefresh(){ const el=document.getElementById("complist"); if(el) el.innerHTML=compListHtml(el.dataset.trip); const t=document.getElementById("comptrips"); if(t) t.innerHTML=compTripsHtml(t.dataset.cur); }
 function compTripsHtml(cur){ const ts=tripsOf().filter(t=>t.id!==cur); if(!ts.length) return "";
-  return `<div class="label">Earlier trips</div>`+ts.map(t=>`<div class="findrow"><div class="row" style="justify-content:space-between"><div><b>${esc(t.store||"Store")}</b><div class="note">${new Date(t.at).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} · ${t.items.length} product${t.items.length===1?"":"s"}</div></div><div class="row"><button class="btn sm" data-tripopen="${esc(t.id)}">Open</button>${downloads?`<button class="btn sm ghost" data-tripphoto="${esc(t.id)}">Photo report</button><button class="btn sm ghost" data-tripsales="${esc(t.id)}">Sales report</button><button class="btn sm ghost" data-tripcsv="${esc(t.id)}">Excel</button>`:""}</div></div></div>`).join(""); }
+  return `<div class="label">Earlier trips</div>`+ts.map(t=>`<div class="findrow"><div class="row" style="justify-content:space-between"><div><b>${esc(t.store||"Store")}</b><div class="note">${new Date(t.at).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} · ${t.items.length} product${t.items.length===1?"":"s"}</div></div><div class="row"><button class="btn sm" data-tripopen="${esc(t.id)}">Open</button>${downloads?`<button class="btn sm ghost" data-tripphoto="${esc(t.id)}">Photo report</button><button class="btn sm ghost" data-tripsales="${esc(t.id)}">Sales report</button><button class="btn sm ghost" data-tripgen="${esc(t.id)}">General report</button><button class="btn sm ghost" data-tripcsv="${esc(t.id)}">Excel</button>`:""}</div></div></div>`).join(""); }
 async function compRun(){
   if(compBusy) return; compBusy=true;
   try{ while(compQ.some(j=>!j.err)){ const j=compQ.find(x=>!x.err);
@@ -1520,7 +1520,8 @@ async function compPhotoReport(trip,sales){
   const many=Array.isArray(trip), ids=many?trip:[trip];
   const items=arr(S.finds).filter(x=>ids.includes(x.trip)).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)); if(!items.length){ toast("No products in this trip yet"); return; }
   const cpPct=num(S.settings.customerPct)||55, cp=cpPct/100, tgt=num(S.settings.marginPct)||40;
-  toast(`Building the ${sales?"sales":"photo"} report (${items.length} product${items.length===1?"":"s"})…`);
+  const gen=sales==="general";
+  toast(`Building the ${gen?"general":(sales?"sales":"photo")} report (${items.length} product${items.length===1?"":"s"})…`);
   const d2=n=>"$"+(+n).toFixed(2);
   const calc=x=>{ const t=arr(x.matches)[0]||null, r=+x.price||0, cust=r?r*cp:0, lc=t&&t.landed!==""&&t.landed!=null?+t.landed:null; return {t,r,cust,lc,mg:(cust&&lc!=null)?(cust-lc)/cust:null,diff:(cust&&lc!=null)?cust-lc:null}; };
   const dataUrl=b=>new Promise(r=>{ const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.onerror=()=>r(""); fr.readAsDataURL(b); });
@@ -1540,12 +1541,15 @@ async function compPhotoReport(trip,sales){
   const sst=c=>c.mg!=null?(c.mg*100>=tgt?["g","Available at this price"]:(c.mg>=0?["y","Check with sourcing before quoting"]:["r","Can't match this store price today"])):(c.t?["y","Check with sourcing before quoting"]:["n","Not sourced yet"]);
   const sli=c=>`<li><b>${nm(c.x)}</b>${c.x.brand?` (${esc(c.x.brand)})`:""}: on the shelf at ${d2(c.r)}, sell at ${d2(c.cust)} or under</li>`;
   const chk=cards.filter(c=>sst(c)[0]==="y");
+  const rng=a=>{ const p=a.filter(c=>c.r).map(c=>c.r); return p.length?(Math.min(...p)===Math.max(...p)?d2(p[0]):`${d2(Math.min(...p))} – ${d2(Math.max(...p))}`):"—"; };
+  const grp=k=>{ const m=new Map(); for(const c of cards){ const key=k(c.x)||"Other"; (m.get(key)||m.set(key,[]).get(key)).push(c); } return [...m.entries()].sort((a,b)=>b[1].length-a[1].length); };
+  const gtab=(head,g)=>`<div class="tw"><table class="fx"><tr><th>${head}</th><th>Products</th><th>Price range</th><th>Average</th></tr>${g.map(([k,a])=>{ const p=a.filter(c=>c.r); return `<tr><td>${esc(k)}</td><td>${a.length}</td><td>${rng(a)}</td><td>${p.length?d2(p.reduce((t,c)=>t+c.r,0)/p.length):"—"}</td></tr>`; }).join("")}</table></div>`;
   const li=c=>`<li><b>${nm(c.x)}</b>${c.x.brand?` (${esc(c.x.brand)})`:""}: retail ${d2(c.r)}, customer pays ${d2(c.cust)}, lands at ${d2(c.lc)} from ${esc(c.t.company||"factory")} — <b class="${c.diff>=0?"g":"r"}">${Math.round(c.mg*100)}% margin, ${c.diff>=0?"makes":"loses"} ${d2(Math.abs(c.diff))} a unit</b></li>`;
   const card=(c,i)=>{ const x=c.x, m=sales?[]:arr(x.matches), st=sales?sst(c)[0]:(c.mg==null?"n":(c.mg*100>=tgt?"g":(c.mg>=0?"y":"r")));
-    const verdict=c.mg!=null?`${Math.round(c.mg*100)}% margin · ${c.diff>=0?"makes":"loses"} ${d2(Math.abs(c.diff))} a unit`:(c.t?(c.r?"Factory match, no landed cost yet":"Factory match, no store price read"):"No factory quote yet"), shown=sales?sst(c)[1]:verdict;
-    return `<section class="card"><div class="ch"><span class="no">${i+1}</span><div><h3>${nm(x)}</h3><div class="sub">${[x.brand,x.model?`Model ${x.model}`:"",many?x.store:"",x.itemNumber?`Item # ${x.itemNumber}`:""].filter(Boolean).map(esc).join(" · ")}</div></div><span class="tag ${st}">${esc(shown)}</span></div>
+    const verdict=c.mg!=null?`${Math.round(c.mg*100)}% margin · ${c.diff>=0?"makes":"loses"} ${d2(Math.abs(c.diff))} a unit`:(c.t?(c.r?"Factory match, no landed cost yet":"Factory match, no store price read"):"No factory quote yet"), shown=gen?(c.r?`Retail ${d2(c.r)}`:"No price read"):(sales?sst(c)[1]:verdict), stg=gen?"n":st;
+    return `<section class="card"><div class="ch"><span class="no">${i+1}</span><div><h3>${nm(x)}</h3><div class="sub">${[x.brand,x.model?`Model ${x.model}`:"",(many||gen)?x.store:"",x.itemNumber?`Item # ${x.itemNumber}`:""].filter(Boolean).map(esc).join(" · ")}</div></div><span class="tag ${stg}">${esc(shown)}</span></div>
       ${c.urls.length?`<div class="ph n${c.urls.length}">${c.urls.map(u=>`<img src="${u}" alt="">`).join("")}</div>`:`<div class="noph">No photo saved</div>`}
-      ${sales?`<div class="tw"><table class="nums"><tr><th>Store price</th><th>Regular / compare-at</th><th>Our price to match</th><th>Status</th></tr><tr><td>${c.r?d2(c.r):"—"}</td><td>${x.regularPrice&&+x.regularPrice>c.r?d2(+x.regularPrice):"—"}</td><td>${c.cust?d2(c.cust):"—"}</td><td class="${st}" style="font-size:15px">${esc(shown)}</td></tr></table></div>`:`<div class="tw"><table class="nums"><tr><th>Store price</th><th>Customer pays (${cpPct}%)</th><th>Best factory price</th><th>Landed</th><th>Margin</th><th>Per unit</th></tr>
+      ${gen?`<div class="tw"><table class="nums"><tr><th>Store</th><th>Retail price</th><th>Regular / compare-at</th></tr><tr><td style="font-size:15px">${esc(x.store||"—")}</td><td>${c.r?d2(c.r):"—"}</td><td>${x.regularPrice&&+x.regularPrice>c.r?d2(+x.regularPrice):"—"}</td></tr></table></div>`:sales?`<div class="tw"><table class="nums"><tr><th>Store price</th><th>Regular / compare-at</th><th>Our price to match</th><th>Status</th></tr><tr><td>${c.r?d2(c.r):"—"}</td><td>${x.regularPrice&&+x.regularPrice>c.r?d2(+x.regularPrice):"—"}</td><td>${c.cust?d2(c.cust):"—"}</td><td class="${st}" style="font-size:15px">${esc(shown)}</td></tr></table></div>`:`<div class="tw"><table class="nums"><tr><th>Store price</th><th>Customer pays (${cpPct}%)</th><th>Best factory price</th><th>Landed</th><th>Margin</th><th>Per unit</th></tr>
       <tr><td>${c.r?d2(c.r):"—"}${x.regularPrice&&+x.regularPrice>c.r?`<small>regular ${d2(+x.regularPrice)}</small>`:""}</td><td>${c.cust?d2(c.cust):"—"}</td><td>${c.t?esc(money(c.t.price,c.t.currency||"USD"))+(c.t.incoterm?` <small>${esc(c.t.incoterm)}</small>`:""):"—"}</td><td>${c.lc!=null?d2(c.lc):"—"}</td><td class="${st}">${c.mg!=null?Math.round(c.mg*100)+"%":"—"}</td><td class="${st}">${c.diff!=null?(c.diff>=0?"+":"−")+d2(Math.abs(c.diff)):"—"}</td></tr></table></div>`}
       ${x.priceNote?`<p class="sm"><b>Price note:</b> ${esc(x.priceNote)}</p>`:""}
       ${x.description||x.packageText?`<p>${esc(x.description||x.packageText)}</p>`:""}
@@ -1553,7 +1557,7 @@ async function compPhotoReport(trip,sales){
       ${[x.packaging?`<b>Packaging:</b> ${esc(x.packaging)}`:"", x.color?`<b>Color:</b> ${esc(x.color)}${x.colorsAvailable?` (also ${esc(x.colorsAvailable)})`:""}`:"", x.material?`<b>Material:</b> ${esc(x.material)}`:""].filter(Boolean).map(t=>`<p class="sm">${t}</p>`).join("")}
       ${m.length?`<div class="tw"><table class="fx"><tr><th>Factory</th><th>Their item</th><th>Price</th><th>Landed</th><th>MOQ</th><th>Quoted</th><th>Match</th></tr>${m.slice(0,5).map(y=>`<tr><td>${esc(y.company||"Factory")}</td><td>${esc(String(y.item||"").slice(0,110))}</td><td>${esc(money(y.price,y.currency||"USD"))} ${esc(y.incoterm||"")}</td><td>${y.landed!==""&&y.landed!=null?d2(+y.landed):"—"}</td><td>${esc(String(y.moq||"—"))}</td><td>${esc(y.date||"—")}</td><td>${y.score?Math.round(y.score)+"%":"—"}</td></tr>`).join("")}</table></div>${m.length>5?`<p class="sm">+ ${m.length-5} more factory match${m.length-5===1?"":"es"} in the Source Book</p>`:""}`:""}
     </section>`; };
-  const title=`${sales?"Sales comp shop report":"Comp shop report"}: ${stores.length===1?stores[0]:(stores.length?stores.length+" stores":"Store")}`;
+  const title=`${gen?"Comp shop":(sales?"Sales comp shop report":"Comp shop report")}: ${stores.length===1?stores[0]:(stores.length?stores.length+" stores":"Store")}`;
   const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
 *{box-sizing:border-box}body{font:15px/1.5 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#1c2321;background:#f3f4f1;margin:0;padding:24px 16px}
 .wrap{max-width:960px;margin:0 auto}h1{font-size:28px;margin:0 0 2px;line-height:1.2}h2{font-size:17px;margin:22px 0 8px}h3{font-size:18px;margin:0;line-height:1.25}
@@ -1571,7 +1575,11 @@ p{margin:8px 0}.sm{font-size:13.5px;color:#39423d}.foot{color:#5b6660;font-size:
 @media print{body{background:#fff;padding:0}.card{break-inside:avoid;border-color:#bbb}.box{break-inside:avoid}.ph img{max-height:330px}}
 </style></head><body><div class="wrap">
 <h1>${esc(title)}</h1><div class="meta">${esc([dates,`${items.length} product${items.length===1?"":"s"}`,`${nPh} photo${nPh===1?"":"s"}`,`Prepared by ${S.settings.signName||"Mike Mizrahi"}, ${S.settings.signCompany||"Premier Accessory Group"}`].filter(Boolean).join(" · "))}</div>
-${sales?`<div class="box"><h2 style="margin-top:0">Summary</h2>
+${gen?`<div class="box"><h2 style="margin-top:0">Summary</h2>
+<div class="kp"><div><b>${items.length}</b><span>products shopped</span></div><div><b>${stores.length||1}</b><span>store${stores.length>1?"s":""} visited</span></div><div><b>${withP.length?d2(avg):"—"}</b><span>average retail price</span></div><div><b style="font-size:19px">${rng(cards)}</b><span>retail price range</span></div><div><b>${new Set(items.map(x=>(x.brand||"").trim().toLowerCase()).filter(Boolean)).size}</b><span>brands seen</span></div></div>
+<h2>Stores</h2>${gtab("Store",grp(x=>x.store||"Store not named"))}
+<h2>What was on the shelf</h2>${gtab("Product type",grp(x=>x.type))}
+<h2>All products at a glance</h2><div class="tw"><table class="fx"><tr><th>#</th><th>Product</th><th>Brand</th><th>Store</th><th>Retail price</th><th>Regular / compare-at</th></tr>${cards.map((c,i)=>`<tr><td>${i+1}</td><td>${nm(c.x)}</td><td>${esc(c.x.brand||"")}</td><td>${esc(c.x.store||"")}</td><td>${c.r?d2(c.r):"—"}</td><td>${c.x.regularPrice&&+c.x.regularPrice>c.r?d2(+c.x.regularPrice):"—"}</td></tr>`).join("")}</table></div></div>`:sales?`<div class="box"><h2 style="margin-top:0">Summary</h2>
 <div class="kp"><div><b>${items.length}</b><span>products shopped</span></div><div><b>${withP.length?d2(avg):"—"}</b><span>average store price</span></div><div><b class="g">${hit.length}</b><span>available at the matching price</span></div><div><b class="y">${chk.length}</b><span>check with sourcing first</span></div><div><b class="r">${lose.length}</b><span>can't match the store price today</span></div><div><b>${noq.length}</b><span>not sourced yet</span></div></div>
 <p class="sm">"Our price to match" is ${cpPct}% of the shelf price: what a retailer would need to pay us to sell the item at the same price this store does. Only quote a price on items marked Available; ask sourcing about the rest.</p>
 ${hit.length?`<h2>Ready to sell (${hit.length})</h2><ul>${hit.slice().sort((a,b)=>b.r-a.r).map(sli).join("")}</ul>`:""}
@@ -1584,10 +1592,10 @@ ${noq.length?`<h2>Not quoted by any factory yet (${noq.length})</h2><p class="sm
 <h2>All products at a glance</h2><div class="tw"><table class="fx"><tr><th>#</th><th>Product</th><th>Brand</th><th>Store price</th><th>Customer pays</th><th>Best factory</th><th>Landed</th><th>Margin</th><th>Per unit</th></tr>${cards.map((c,i)=>`<tr><td>${i+1}</td><td>${nm(c.x)}</td><td>${esc(c.x.brand||"")}</td><td>${c.r?d2(c.r):"—"}</td><td>${c.cust?d2(c.cust):"—"}</td><td>${c.t?esc(c.t.company||"Factory"):"—"}</td><td>${c.lc!=null?d2(c.lc):"—"}</td><td class="${c.mg==null?"n":(c.mg*100>=tgt?"g":(c.mg>=0?"y":"r"))}">${c.mg!=null?Math.round(c.mg*100)+"%":"—"}</td><td class="${c.diff==null?"n":(c.diff>=0?"g":"r")}">${c.diff!=null?(c.diff>=0?"+":"−")+d2(Math.abs(c.diff)):"—"}</td></tr>`).join("")}</table></div></div>
 `}
 ${cards.map(card).join("\n")}
-<div class="foot">Made from the Source Book on ${fd(Date.now())}. ${sales?"Availability is based on current factory quotes and can change: confirm with sourcing before committing a price.":"Factory matches are picked by Claude from your saved quotes and can be wrong: check the item before relying on a number."} To save as a PDF, print this page and choose "Save as PDF".</div>
+<div class="foot">Made from the Source Book on ${fd(Date.now())}. ${gen?"Prices are the shelf prices read from the tags on the day of the visit.":sales?"Availability is based on current factory quotes and can change: confirm with sourcing before committing a price.":"Factory matches are picked by Claude from your saved quotes and can be wrong: check the item before relying on a number."} To save as a PDF, print this page and choose "Save as PDF".</div>
 </div></body></html>`;
   const store=many&&ids.length>1?"all-stores":(items[0].store||"store").replace(/[^A-Za-z0-9]+/g,"-");
-  try{ await downloads.save({filename:`comp-shop-${sales?"sales":"photo"}-report-${store}-${today()}.html`, data:new Blob([html],{type:"text/html;charset=utf-8"}), mimeType:"text/html"}); toast((sales?"Sales":"Photo")+" report saved to your downloads. Open it to view or print."); }
+  try{ await downloads.save({filename:`comp-shop-${gen?"general":(sales?"sales":"photo")}-report-${store}-${today()}.html`, data:new Blob([html],{type:"text/html;charset=utf-8"}), mimeType:"text/html"}); toast((gen?"General":(sales?"Sales":"Photo"))+" report saved to your downloads. Open it to view or print."); }
   catch(e){ if(e?.code&&e.code!=="declined"&&e.code!=="cancelled") toast("Report didn't save"); }
 }
 /* Trip report as an Excel file: the CSV columns plus up to 3 photos per product (first photo in column A). */
@@ -1618,11 +1626,11 @@ function openCompShop(tripId){
   const last=(()=>{ try{ return localStorage.getItem("sb-laststore")||""; }catch{ return ""; } })();
   openSheet("Comp shop",`
     <div class="note">For each product, take as many photos as you need (front, back of the package, price tag), then tap Next product. Or use Bulk add to pick many photos at once, one per product. Claude reads the brand, description, key points, packaging and color from all the photos in the background and lines the product up against your factory quotes.</div>
-    <div class="field"><label for="compstore">Store</label><input id="compstore" placeholder="e.g. Five Below, Walmart" value="${esc(ex?ex.store:last)}"></div>
+    <div class="field"><label for="compstore">Store</label><input id="compstore" placeholder="Store and location, e.g. Ross, East Brunswick NJ" value="${esc(ex?ex.store:last)}"></div>
     <div class="row"><label class="btn primary simshot">📷 Add photo<input type="file" accept="image/*" id="compimg" multiple hidden></label><button class="btn primary" id="compnext" disabled>✓ Next product</button></div>
     <div id="comptray" class="row"></div>
     <div class="row"><label class="btn simshot" title="Pick many photos from your camera roll. Each photo becomes its own product.">🖼 Bulk add: one photo per product<input type="file" accept="image/*" id="compbulk" multiple hidden></label><span class="status" id="compbulkst"></span></div>
-    <div class="row">${downloads?`<button class="btn" id="compphoto">Photo report with summary</button><button class="btn" id="compsales">Sales team report (no costs)</button><button class="btn ghost" id="compcsv">Trip report (Excel)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}${downloads?`<button class="btn ghost" id="compday">All stores today (Excel)</button>`:""}</div>
+    <div class="row">${downloads?`<button class="btn" id="compphoto">Photo report with summary</button><button class="btn" id="compsales">Sales team report (no costs)</button><button class="btn" id="compgen">General report (stores, prices, photos)</button><button class="btn ghost" id="compcsv">Trip report (Excel)</button>`:""}${ex?"":`<button class="btn ghost" id="compnew">Start a new trip</button>`}${downloads?`<button class="btn ghost" id="compday">All stores today (Excel)</button>`:""}</div>
     <div id="complist" class="stack" data-trip=""></div>
     <div id="comptrips" class="stack" data-cur=""></div>`, body=>{
     const setTrip=t=>{ trip=t; if($("#complist")){ $("#complist").dataset.trip=t||""; $("#comptrips").dataset.cur=t||""; } compRefresh(); };
@@ -1656,6 +1664,7 @@ function openCompShop(tripId){
       compQ.push({trip:x.trip,store:x.store||"",imgs,findId:x.id}); compRefresh(); compRun(); });
     const nb=$("#compnew"); if(nb) nb.onclick=()=>{ setTrip(null); toast("New trip. Snap the first product."); };
     const db2=$("#compday"); if(db2) db2.onclick=()=>{ const d0=new Date(); d0.setHours(0,0,0,0); const ids=tripsOf().filter(t=>t.at>=d0.getTime()).map(t=>t.id); if(ids.length) compCsv(ids); else toast("No products today yet"); };
+    const gb=$("#compgen"); if(gb) gb.onclick=()=>{ if(trip) compPhotoReport(trip,"general"); else toast("No products in this trip yet"); };
     const sb2=$("#compsales"); if(sb2) sb2.onclick=()=>{ if(trip) compPhotoReport(trip,true); else toast("No products in this trip yet"); };
     const pb=$("#compphoto"); if(pb) pb.onclick=()=>{ if(trip) compPhotoReport(trip); else toast("No products in this trip yet"); };
     const cb=$("#compcsv"); if(cb) cb.onclick=()=>{ if(trip) compCsv(trip); else toast("No products in this trip yet"); };
@@ -1670,6 +1679,7 @@ function openCompShop(tripId){
         return; }
       const del=e.target.closest("[data-finddel]"); if(del){ e.preventDefault(); if(del.dataset.sure!=="1"){ del.dataset.sure="1"; del.textContent="Tap again to remove"; return; } try{ await db.doc("storefinds/"+del.dataset.finddel).delete(); }catch(err){ toast("Couldn't remove"); } return; }
       const to=e.target.closest("[data-tripopen]"); if(to){ openCompShop(to.dataset.tripopen); return; }
+      const tg=e.target.closest("[data-tripgen]"); if(tg){ compPhotoReport(tg.dataset.tripgen,"general"); return; }
       const ts2=e.target.closest("[data-tripsales]"); if(ts2){ compPhotoReport(ts2.dataset.tripsales,true); return; }
       const tp=e.target.closest("[data-tripphoto]"); if(tp){ compPhotoReport(tp.dataset.tripphoto); return; }
       const tc=e.target.closest("[data-tripcsv]"); if(tc){ compCsv(tc.dataset.tripcsv); return; }
