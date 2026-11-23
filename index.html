@@ -1572,7 +1572,7 @@ table{border-collapse:collapse;width:100%;margin:8px 0}th,td{border:1px solid #d
 .nums td{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}.nums small,td small{display:block;font-size:12px;font-weight:400;color:#5b6660}.fx{font-size:13px}.tw{overflow-x:auto}.tw table{min-width:520px}
 p{margin:8px 0}.sm{font-size:13.5px;color:#39423d}.foot{color:#5b6660;font-size:12.5px;margin-top:8px}
 @media(max-width:640px){.ch{flex-wrap:wrap}.ch>div{flex-basis:calc(100% - 42px)}.tag{white-space:normal}.ph.n3,.ph.n2{grid-template-columns:1fr 1fr}.nums td{font-size:15px}}
-@media print{body{background:#fff;padding:0}.card{break-inside:avoid;border-color:#bbb}.box{break-inside:avoid}.ph img{max-height:330px}}
+@media print{body{background:#fff;padding:0}.card{break-inside:avoid;border-color:#bbb}tr{break-inside:avoid}h2{break-after:avoid}.ph img{max-height:330px}}
 </style></head><body><div class="wrap">
 <h1>${esc(title)}</h1><div class="meta">${esc([dates,`${items.length} product${items.length===1?"":"s"}`,`${nPh} photo${nPh===1?"":"s"}`,`Prepared by ${S.settings.signName||"Mike Mizrahi"}, ${S.settings.signCompany||"Premier Accessory Group"}`].filter(Boolean).join(" · "))}</div>
 ${gen?`<div class="box"><h2 style="margin-top:0">Summary</h2>
