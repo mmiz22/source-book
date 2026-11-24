@@ -762,7 +762,7 @@ function quotesFor(id){ return S.quotes.filter(q=>q.supplierId===id).sort((a,b)=
 function money(p,cur){ if(p===""||p==null||isNaN(+p)) return "—"; const n=+p; return (cur==="RMB"?"¥":cur==="EUR"?"€":"$")+n.toFixed(n<10?3:2).replace(/0$/,""); }
 
 /* ---------- landed cost ---------- */
-const SET_DEFAULT={signName:"Mike Mizrahi",signCompany:"Premier Accessory Group",rmbPerUsd:"7.1",usdPerEur:"1.08",freightPerUnit:"",containerCost:"9800",defaultUnits:"10000",dutyPct:"3",tariffPct:"37.5",otherPerUnit:"",targetMargin:"",customerPct:"55",marginPct:"40",minMarginPct:"35",customers:"Ross / Burlington = 52\nWalmart = 53\nDollar Tree / Family Dollar = 45"};
+const SET_DEFAULT={signName:"Mike Mizrahi",signCompany:"Premier Accessory Group",rmbPerUsd:"7.1",usdPerEur:"1.08",freightPerUnit:"",containerCost:"9800",defaultUnits:"10000",dutyPct:"3",tariffPct:"37.5",otherPerUnit:"",exwPct:"3",packPerUnit:"0.30",targetMargin:"",customerPct:"55",marginPct:"40",minMarginPct:"35",customers:"Ross / Burlington = 52\nWalmart = 53\nDollar Tree / Family Dollar = 45"};
 S.settings={...SET_DEFAULT};
 const num=v=>{ if(v===""||v==null) return null; const n=parseFloat(String(v).replace(/[^0-9.\-]/g,"")); return isFinite(n)?n:null; };
 const pick=(a,b)=>num(a)!=null?num(a):num(b);
@@ -770,6 +770,7 @@ function toUsd(p,cur){ const n=num(p); if(n==null) return null;
   if(cur==="RMB"){ const r=num(S.settings.rmbPerUsd); return r?n/r:null; }
   if(cur==="EUR"){ const r=num(S.settings.usdPerEur); return r?n*r:null; }
   return n; }
+const noPackLine=(q,l)=>!!l&&(l.noPack===true||(!!q&&q.noPack===true&&l.noPack!==false));
 function landed(q,l){
   const fob=toUsd(l.price,q.currency); if(fob==null) return null;
   const L=q.landed||{}, t=num(l.target);
@@ -784,10 +785,13 @@ function landed(q,l){
   const own=num(L.dutyPct)!=null||num(L.tariffPct)!=null;
   const td=own?null:typeDuty((x=>x&&!x.a?x.t:null)(typeOf(l)));
   const pct=td?num(td.pct):(pick(L.dutyPct,S.settings.dutyPct)??0)+(pick(L.tariffPct,S.settings.tariffPct)??0);
-  const duty=fob*pct/100;
+  // EXW: the factory's price stops at its door, so add the cost of getting it to the port. Without packaging: add a packaging estimate. Both are part of the value duty is charged on.
+  const exw=q.incoterm==="EXW"?fob*(pick(L.exwPct,S.settings.exwPct)??0)/100:0;
+  const pack=noPackLine(q,l)?(pick(L.packPerUnit,S.settings.packPerUnit)??0):0;
+  const duty=(fob+exw+pack)*pct/100;
   const other=pick(L.otherPerUnit,S.settings.otherPerUnit)??0;
-  const total=fob+freight+duty+other;
-  return {fob,freight,duty,other,total,pct,units,unitsSrc,dutySrc:own?"quote":td?"type":"default",margin:mg(total)};
+  const total=fob+exw+pack+freight+duty+other;
+  return {fob,exw,pack,freight,duty,other,total,pct,units,unitsSrc,dutySrc:own?"quote":td?"type":"default",margin:mg(total)};
 }
 // duty + tariff % per product type (settings/duties): {pct, hts, mfn, s301, s232, note}
 S.duties={}; S.dutiesExists=false;
@@ -815,7 +819,7 @@ async function saveDuty(t,val){
   try{ await db.doc("settings/duties").set({map,updatedAt:Date.now()}); S.dutiesExists=true; toast(v?`${t}: duty + tariff ${v}%`:`${t}: duty cleared`); }
   catch(e){ toast("Couldn't save the duty ("+(e.code||"error")+")."); }
 }
-function lcTitle(lc){ if(!lc) return ""; return `FOB ${usd(lc.fob)} + freight ${usd(lc.freight)}${lc.units?` (${Math.round(lc.units).toLocaleString()} per container, ${lc.unitsSrc==="quote"?"from this quote":lc.unitsSrc==="type"?"estimate for this product type":"general default"})`:""} + duty/tariff ${lc.pct.toFixed(1).replace(/\.0$/,"")}% (${usd(lc.duty)})${lc.other?` + other ${usd(lc.other)}`:""}`; }
+function lcTitle(lc){ if(!lc) return ""; return `Factory price ${usd(lc.fob)}${lc.exw?` + to port (EXW) ${usd(lc.exw)}`:""}${lc.pack?` + packaging est. ${usd(lc.pack)}`:""} + freight ${usd(lc.freight)}${lc.units?` (${Math.round(lc.units).toLocaleString()} per container, ${lc.unitsSrc==="quote"?"from this quote":lc.unitsSrc==="type"?"estimate for this product type":"general default"})`:""} + duty/tariff ${lc.pct.toFixed(1).replace(/\.0$/,"")}% (${usd(lc.duty)})${lc.other?` + other ${usd(lc.other)}`:""}`; }
 const usd=n=>n==null?"—":"$"+n.toFixed(n<10?3:2);
 function marginHtml(m){
   if(m==null) return "";
@@ -823,9 +827,9 @@ function marginHtml(m){
   const cls = tgt==null ? "" : (m*100>=tgt?"good":"bad");
   return ` <span class="mg ${cls}">${(m*100).toFixed(0)}%</span>`;
 }
-const LC_FIELDS=[["containerCost","Container freight $","$"],["freightPerUnit","Freight per unit $","$"],["dutyPct","Duty %","%"],["tariffPct","Extra tariff %","%"],["otherPerUnit","Other per unit $","$"]];
+const LC_FIELDS=[["packPerUnit","Packaging per unit $ (when the price is without packaging)","$"],["exwPct","EXW: add % to reach the port","%"],["containerCost","Container freight $","$"],["freightPerUnit","Freight per unit $","$"],["dutyPct","Duty %","%"],["tariffPct","Extra tariff %","%"],["otherPerUnit","Other per unit $","$"]];
 function openSettings(){
-  const f=[["signName","Your name (for messages)"],["signCompany","Your company"],["rmbPerUsd","RMB per 1 USD"],["usdPerEur","USD per 1 EUR"],["containerCost","Container freight $ (e.g. 40HQ to your port)"],["defaultUnits","Units per container when a quote doesn't say"],["freightPerUnit","Freight per unit $ (used only if no container cost)"],["dutyPct","Default duty % (types without their own %)"],["tariffPct","Default extra tariff % (types without their own %)"],["otherPerUnit","Other per unit $ (customs, drayage, inland)"],["customerPct","Customer cost, % of retail (when no customers listed)"],["marginPct","Your target margin %"],["minMarginPct","Lowest margin you'll accept %"]];
+  const f=[["signName","Your name (for messages)"],["signCompany","Your company"],["rmbPerUsd","RMB per 1 USD"],["usdPerEur","USD per 1 EUR"],["containerCost","Container freight $ (e.g. 40HQ to your port)"],["defaultUnits","Units per container when a quote doesn't say"],["freightPerUnit","Freight per unit $ (used only if no container cost)"],["dutyPct","Default duty % (types without their own %)"],["tariffPct","Default extra tariff % (types without their own %)"],["otherPerUnit","Other per unit $ (customs, drayage, inland)"],["exwPct","EXW quotes: add this % to get the goods to the port"],["packPerUnit","Packaging $ per unit to add when a price is without packaging"],["customerPct","Customer cost, % of retail (when no customers listed)"],["marginPct","Your target margin %"],["minMarginPct","Lowest margin you'll accept %"]];
   openSheet("Settings",`
     <div class="note">Cost defaults fill every quote's landed cost. A quote can override any of them. Duty and tariff rates change often, so check the current rate for each HTS code.</div>
     <div class="note">Fit check: customer cost = target retail × (100 − that customer's margin %). A quote <strong>fits</strong> when its landed cost leaves your target margin on that customer cost, is <strong>tight</strong> between your target and lowest margin, and is <strong>over</strong> below that.</div>
@@ -916,7 +920,7 @@ function fitBadge(f){
 }
 function fitLine(q,l){
   const ty=typeOf(l), f=fitFor(q,l,ty&&!ty.a?ty.t:null);
-  return `<div class="lcost">${f?.lc?`<span title="${esc(lcTitle(f.lc))}">Landed ${usd(f.lc.total)}</span> `:""}${ty&&!ty.a?fitChips(q,l,ty.t):""}</div>${ty?`<div class="note">${esc(ty.a?"Add-on":ty.t)}${f?.retail!=null?` · retail ${usd(f.retail)}`:""}</div>`:""}`;
+  return `<div class="lcost">${f?.lc?`<span title="${esc(lcTitle(f.lc))}">Landed ${usd(f.lc.total)}</span> `:""}${ty&&!ty.a?fitChips(q,l,ty.t):""}</div>${ty?`<div class="note">${esc(ty.a?"Add-on":ty.t)}${f?.retail!=null?` · retail ${usd(f.retail)}`:""}</div>`:""}${f?.lc&&(f.lc.pack||f.lc.exw)?`<div class="note">Landed includes ${[f.lc.pack?`${usd(f.lc.pack)} packaging (price is without packaging)`:"",f.lc.exw?`${usd(f.lc.exw)} to reach the port (EXW)`:""].filter(Boolean).join(" and ")}</div>`:""}`;
 }
 /* ---------- original quote files & product photos ---------- */
 const fileNamesIn=t=>(String(t||"").match(/[^\s;:,|][^;:\n|]*?\.(?:xlsx|xls|xlsm|pdf|csv|jpe?g|png)/gi)||[]).map(x=>x.trim());
@@ -1457,9 +1461,17 @@ async function saveFind(findId, id, img, price, rp, good, text, store, trip){
 /* ---------- comp shop: walk a store, snap products, get a trip report ---------- */
 const compQ=[]; let compBusy=false;
 function tripsOf(){ const m=new Map(); for(const x of arr(S.finds)){ if(!x.trip) continue; const t=m.get(x.trip)||{id:x.trip,store:x.store||"",items:[],at:0}; t.items.push(x); t.at=Math.max(t.at,x.createdAt||0); if(x.store) t.store=x.store; m.set(x.trip,t); } return [...m.values()].sort((a,b)=>b.at-a.at); }
+// Comp shop math: the customer is picked from the store name when it matches your customer list (Ross -> "Ross / Burlington"), otherwise the customer chosen in the app; landed cost is recalculated from the quote when it can still be found.
+function compCust(x){ const st=String(x&&x.store||"").toLowerCase(); if(st){ for(const c of customers()){ if(String(c.name).toLowerCase().split(/\s*[\/,&]\s*/).some(p=>p.length>2&&st.includes(p))) return c; } } return activeCust(); }
+function compPct(x){ return custPct(compCust(x)); }
+function matchLanded(m){ if(!m) return null;
+  const it=String(m.item||""); let hit=null;
+  if(m.supplierId&&it){ for(const q of S.quotes){ if(q.supplierId!==m.supplierId) continue; for(const l of arr(q.lines)){ if(!l||!l.item) continue; if(String(l.item).slice(0,200)===it&&String(l.price??"")===String(m.price??"")&&(!m.date||!q.date||q.date===m.date)){ hit=[q,l]; break; } } if(hit) break; } }
+  if(hit){ try{ const lc=landed(hit[0],hit[1]); if(lc&&lc.total!=null) return +lc.total.toFixed(3); }catch(e){} }
+  return m.landed!==""&&m.landed!=null?+m.landed:null; }
 function compRowHtml(x){
-  const m=arr(x.matches), top=m[0], retail=+x.price||0, cust=retail?retail*(num(S.settings.customerPct)||55)/100:0;
-  const lc=top&&top.landed!==""&&top.landed!=null?+top.landed:null, mg=(cust&&lc!=null)?(cust-lc)/cust:null;
+  const m=arr(x.matches), top=m[0], retail=+x.price||0, cust=retail?retail*compPct(x)/100:0;
+  const lc=matchLanded(top), mg=(cust&&lc!=null)?(cust-lc)/cust:null;
   return `<details class="findrow"><summary>
     ${x.photo?`<img class="pimg" src="${esc(blobUrl(x.photo))}" alt="" loading="lazy">`:`<div class="ph"></div>`}
     <div class="findwho"><b>${esc(x.name||x.type||"Product")}</b>${x.brand?` · ${esc(x.brand)}`:""}
@@ -1470,7 +1482,7 @@ function compRowHtml(x){
     ${arr(x.keyPoints).length?`<div class="note"><b>Key points:</b> ${esc(arr(x.keyPoints).join(" · "))}</div>`:""}
     ${[x.packaging?`<b>Packaging:</b> ${esc(x.packaging)}`:"", x.color?`<b>Color:</b> ${esc(x.color)}${x.colorsAvailable?` (also ${esc(x.colorsAvailable)})`:""}`:"", x.material?`<b>Material:</b> ${esc(x.material)}`:"", x.model?`<b>Model:</b> ${esc(x.model)}`:"", x.itemNumber?`<b>Item #:</b> ${esc(x.itemNumber)}`:""].filter(Boolean).map(t=>`<div class="note">${t}</div>`).join("")}
     ${arr(x.features).length?`<div class="note">${esc(arr(x.features).join(" · "))}</div>`:""}
-    ${m.map(y=>`<div class="findmatch" data-findopen="${esc(y.supplierId||"")}" tabindex="0" role="button"><b>${esc(y.company||"Factory")}</b> ${y.score?`<span class="note">${Math.round(y.score)}% match</span>`:""}<div class="note">${esc(String(y.item||"").slice(0,140))}</div><div class="note">${esc([money(y.price,y.currency||"USD"), y.incoterm, y.landed!==""&&y.landed!=null?`landed ${usd(+y.landed)}`:"", y.moq?`MOQ ${y.moq}`:"", y.date].filter(Boolean).join(" · "))}</div></div>`).join("")}
+    ${m.map(y=>`<div class="findmatch" data-findopen="${esc(y.supplierId||"")}" tabindex="0" role="button"><b>${esc(y.company||"Factory")}</b> ${y.score?`<span class="note">${Math.round(y.score)}% match</span>`:""}<div class="note">${esc(String(y.item||"").slice(0,140))}</div><div class="note">${esc([money(y.price,y.currency||"USD"), y.incoterm, (v=>v!=null?`landed ${usd(v)}`:"")(matchLanded(y)), y.moq?`MOQ ${y.moq}`:"", y.date].filter(Boolean).join(" · "))}</div></div>`).join("")}
     ${webBox({name:x.name,type:x.type,brand:x.brand,features:x.features,store:x.store,findId:x.id},x.web)}
     <div class="row"><label class="btn sm">＋ Add photos and re-read<input type="file" accept="image/*" multiple hidden data-findadd="${esc(x.id)}"></label><button class="btn sm ghost" data-finddel="${esc(x.id)}">Remove</button></div></details>`;
 }
@@ -1505,9 +1517,8 @@ async function compRun(){
 async function compCsv(trip){
   const many=Array.isArray(trip), ids=many?trip:[trip];
   const items=arr(S.finds).filter(x=>ids.includes(x.trip)).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)); if(!items.length) return;
-  const cp=(num(S.settings.customerPct)||55)/100;
   const rows=[["Date","Store","Product","Brand","Model","Retail $","Regular $","Customer cost $","Best factory","Quoted","Terms","MOQ","Landed $","Margin %","Match %","Factories matched","Features","Description","Key points","Packaging","Color","Material","Item #","Photos"]];
-  for(const x of items){ const t=arr(x.matches)[0], r=+x.price||0, cust=r?r*cp:0, lc=t&&t.landed!==""&&t.landed!=null?+t.landed:null;
+  for(const x of items){ const t=arr(x.matches)[0], r=+x.price||0, cust=r?r*compPct(x)/100:0, lc=matchLanded(t);
     rows.push([x.createdAt?new Date(x.createdAt).toLocaleDateString():"", x.store||"", x.name||x.type||"", x.brand||"", x.model||"", r||"", x.regularPrice||"", cust?cust.toFixed(2):"", t?.company||"", t?t.price:"", t?.incoterm||"", t?.moq||"", lc!=null?lc.toFixed(2):"", (cust&&lc!=null)?Math.round((cust-lc)/cust*100):"", t?.score?Math.round(t.score):"", new Set(arr(x.matches).map(m=>m.supplierId)).size||"", arr(x.features).join("; "), x.description||x.packageText||"", arr(x.keyPoints).join("; "), x.packaging||"", [x.color,x.colorsAvailable].filter(Boolean).join("; also "), x.material||"", x.itemNumber||"", arr(x.photos).length||(x.photo?1:0)]); }
   const store=many&&ids.length>1?"all-stores":(items[0].store||"store").replace(/[^A-Za-z0-9]+/g,"-");
   let blob=null;
@@ -1519,11 +1530,12 @@ async function compCsv(trip){
 async function compPhotoReport(trip,sales){
   const many=Array.isArray(trip), ids=many?trip:[trip];
   const items=arr(S.finds).filter(x=>ids.includes(x.trip)).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)); if(!items.length){ toast("No products in this trip yet"); return; }
-  const cpPct=num(S.settings.customerPct)||55, cp=cpPct/100, tgt=num(S.settings.marginPct)||40;
+  const pcts=[...new Set(items.map(compPct))].sort((a,b)=>a-b), cpPct=pcts.length===1?pcts[0]:`${pcts[0]}–${pcts[pcts.length-1]}`, tgt=num(S.settings.marginPct)||40;
+  const custName=pcts.length===1?(compCust(items[0])?.name||""):"";
   const gen=sales==="general";
   toast(`Building the ${gen?"general":(sales?"sales":"photo")} report (${items.length} product${items.length===1?"":"s"})…`);
   const d2=n=>"$"+(+n).toFixed(2);
-  const calc=x=>{ const t=arr(x.matches)[0]||null, r=+x.price||0, cust=r?r*cp:0, lc=t&&t.landed!==""&&t.landed!=null?+t.landed:null; return {t,r,cust,lc,mg:(cust&&lc!=null)?(cust-lc)/cust:null,diff:(cust&&lc!=null)?cust-lc:null}; };
+  const calc=x=>{ const t=arr(x.matches)[0]||null, r=+x.price||0, pct=compPct(x), cust=r?r*pct/100:0, lc=matchLanded(t); return {t,r,pct,cust,lc,mg:(cust&&lc!=null)?(cust-lc)/cust:null,diff:(cust&&lc!=null)?cust-lc:null}; };
   const dataUrl=b=>new Promise(r=>{ const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.onerror=()=>r(""); fr.readAsDataURL(b); });
   const per=items.length>40?2:3, px=items.length>40?640:800;
   const cards=[]; let nPh=0;
@@ -1549,13 +1561,13 @@ async function compPhotoReport(trip,sales){
     const verdict=c.mg!=null?`${Math.round(c.mg*100)}% margin · ${c.diff>=0?"makes":"loses"} ${d2(Math.abs(c.diff))} a unit`:(c.t?(c.r?"Factory match, no landed cost yet":"Factory match, no store price read"):"No factory quote yet"), shown=gen?(c.r?`Retail ${d2(c.r)}`:"No price read"):(sales?sst(c)[1]:verdict), stg=gen?"n":st;
     return `<section class="card"><div class="ch"><span class="no">${i+1}</span><div><h3>${nm(x)}</h3><div class="sub">${[x.brand,x.model?`Model ${x.model}`:"",(many||gen)?x.store:"",x.itemNumber?`Item # ${x.itemNumber}`:""].filter(Boolean).map(esc).join(" · ")}</div></div><span class="tag ${stg}">${esc(shown)}</span></div>
       ${c.urls.length?`<div class="ph n${c.urls.length}">${c.urls.map(u=>`<img src="${u}" alt="">`).join("")}</div>`:`<div class="noph">No photo saved</div>`}
-      ${gen?`<div class="tw"><table class="nums"><tr><th>Store</th><th>Retail price</th><th>Regular / compare-at</th></tr><tr><td style="font-size:15px">${esc(x.store||"—")}</td><td>${c.r?d2(c.r):"—"}</td><td>${x.regularPrice&&+x.regularPrice>c.r?d2(+x.regularPrice):"—"}</td></tr></table></div>`:sales?`<div class="tw"><table class="nums"><tr><th>Store price</th><th>Regular / compare-at</th><th>Our price to match</th><th>Status</th></tr><tr><td>${c.r?d2(c.r):"—"}</td><td>${x.regularPrice&&+x.regularPrice>c.r?d2(+x.regularPrice):"—"}</td><td>${c.cust?d2(c.cust):"—"}</td><td class="${st}" style="font-size:15px">${esc(shown)}</td></tr></table></div>`:`<div class="tw"><table class="nums"><tr><th>Store price</th><th>Customer pays (${cpPct}%)</th><th>Best factory price</th><th>Landed</th><th>Margin</th><th>Per unit</th></tr>
+      ${gen?`<div class="tw"><table class="nums"><tr><th>Store</th><th>Retail price</th><th>Regular / compare-at</th></tr><tr><td style="font-size:15px">${esc(x.store||"—")}</td><td>${c.r?d2(c.r):"—"}</td><td>${x.regularPrice&&+x.regularPrice>c.r?d2(+x.regularPrice):"—"}</td></tr></table></div>`:sales?`<div class="tw"><table class="nums"><tr><th>Store price</th><th>Regular / compare-at</th><th>Our price to match</th><th>Status</th></tr><tr><td>${c.r?d2(c.r):"—"}</td><td>${x.regularPrice&&+x.regularPrice>c.r?d2(+x.regularPrice):"—"}</td><td>${c.cust?d2(c.cust):"—"}</td><td class="${st}" style="font-size:15px">${esc(shown)}</td></tr></table></div>`:`<div class="tw"><table class="nums"><tr><th>Store price</th><th>Customer pays (${c.pct}%)</th><th>Best factory price</th><th>Landed</th><th>Margin</th><th>Per unit</th></tr>
       <tr><td>${c.r?d2(c.r):"—"}${x.regularPrice&&+x.regularPrice>c.r?`<small>regular ${d2(+x.regularPrice)}</small>`:""}</td><td>${c.cust?d2(c.cust):"—"}</td><td>${c.t?esc(money(c.t.price,c.t.currency||"USD"))+(c.t.incoterm?` <small>${esc(c.t.incoterm)}</small>`:""):"—"}</td><td>${c.lc!=null?d2(c.lc):"—"}</td><td class="${st}">${c.mg!=null?Math.round(c.mg*100)+"%":"—"}</td><td class="${st}">${c.diff!=null?(c.diff>=0?"+":"−")+d2(Math.abs(c.diff)):"—"}</td></tr></table></div>`}
       ${x.priceNote?`<p class="sm"><b>Price note:</b> ${esc(x.priceNote)}</p>`:""}
       ${x.description||x.packageText?`<p>${esc(x.description||x.packageText)}</p>`:""}
       ${arr(x.keyPoints).length?`<p class="sm"><b>Key points:</b> ${esc(arr(x.keyPoints).join(" · "))}</p>`:(arr(x.features).length?`<p class="sm"><b>Features:</b> ${esc(arr(x.features).join(" · "))}</p>`:"")}
       ${[x.packaging?`<b>Packaging:</b> ${esc(x.packaging)}`:"", x.color?`<b>Color:</b> ${esc(x.color)}${x.colorsAvailable?` (also ${esc(x.colorsAvailable)})`:""}`:"", x.material?`<b>Material:</b> ${esc(x.material)}`:""].filter(Boolean).map(t=>`<p class="sm">${t}</p>`).join("")}
-      ${m.length?`<div class="tw"><table class="fx"><tr><th>Factory</th><th>Their item</th><th>Price</th><th>Landed</th><th>MOQ</th><th>Quoted</th><th>Match</th></tr>${m.slice(0,5).map(y=>`<tr><td>${esc(y.company||"Factory")}</td><td>${esc(String(y.item||"").slice(0,110))}</td><td>${esc(money(y.price,y.currency||"USD"))} ${esc(y.incoterm||"")}</td><td>${y.landed!==""&&y.landed!=null?d2(+y.landed):"—"}</td><td>${esc(String(y.moq||"—"))}</td><td>${esc(y.date||"—")}</td><td>${y.score?Math.round(y.score)+"%":"—"}</td></tr>`).join("")}</table></div>${m.length>5?`<p class="sm">+ ${m.length-5} more factory match${m.length-5===1?"":"es"} in the Source Book</p>`:""}`:""}
+      ${m.length?`<div class="tw"><table class="fx"><tr><th>Factory</th><th>Their item</th><th>Price</th><th>Landed</th><th>MOQ</th><th>Quoted</th><th>Match</th></tr>${m.slice(0,5).map(y=>`<tr><td>${esc(y.company||"Factory")}</td><td>${esc(String(y.item||"").slice(0,110))}</td><td>${esc(money(y.price,y.currency||"USD"))} ${esc(y.incoterm||"")}</td><td>${(v=>v!=null?d2(v):"—")(matchLanded(y))}</td><td>${esc(String(y.moq||"—"))}</td><td>${esc(y.date||"—")}</td><td>${y.score?Math.round(y.score)+"%":"—"}</td></tr>`).join("")}</table></div>${m.length>5?`<p class="sm">+ ${m.length-5} more factory match${m.length-5===1?"":"es"} in the Source Book</p>`:""}`:""}
     </section>`; };
   const title=`${gen?"Comp shop":(sales?"Sales comp shop report":"Comp shop report")}: ${stores.length===1?stores[0]:(stores.length?stores.length+" stores":"Store")}`;
   const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
@@ -1581,11 +1593,11 @@ ${gen?`<div class="box"><h2 style="margin-top:0">Summary</h2>
 <h2>What was on the shelf</h2>${gtab("Product type",grp(x=>x.type))}
 <h2>All products at a glance</h2><div class="tw"><table class="fx"><tr><th>#</th><th>Product</th><th>Brand</th><th>Store</th><th>Retail price</th><th>Regular / compare-at</th></tr>${cards.map((c,i)=>`<tr><td>${i+1}</td><td>${nm(c.x)}</td><td>${esc(c.x.brand||"")}</td><td>${esc(c.x.store||"")}</td><td>${c.r?d2(c.r):"—"}</td><td>${c.x.regularPrice&&+c.x.regularPrice>c.r?d2(+c.x.regularPrice):"—"}</td></tr>`).join("")}</table></div></div>`:sales?`<div class="box"><h2 style="margin-top:0">Summary</h2>
 <div class="kp"><div><b>${items.length}</b><span>products shopped</span></div><div><b>${withP.length?d2(avg):"—"}</b><span>average store price</span></div><div><b class="g">${hit.length}</b><span>available at the matching price</span></div><div><b class="y">${chk.length}</b><span>check with sourcing first</span></div><div><b class="r">${lose.length}</b><span>can't match the store price today</span></div><div><b>${noq.length}</b><span>not sourced yet</span></div></div>
-<p class="sm">"Our price to match" is ${cpPct}% of the shelf price: what a retailer would need to pay us to sell the item at the same price this store does. Only quote a price on items marked Available; ask sourcing about the rest.</p>
+<p class="sm">"Our price to match" is ${cpPct}% of the shelf price${custName?` (${esc(custName)} terms)`:""}: what a retailer would need to pay us to sell the item at the same price this store does. Only quote a price on items marked Available; ask sourcing about the rest.</p>
 ${hit.length?`<h2>Ready to sell (${hit.length})</h2><ul>${hit.slice().sort((a,b)=>b.r-a.r).map(sli).join("")}</ul>`:""}
 <h2>All products at a glance</h2><div class="tw"><table class="fx"><tr><th>#</th><th>Product</th><th>Brand</th><th>Store price</th><th>Our price to match</th><th>Status</th></tr>${cards.map((c,i)=>`<tr><td>${i+1}</td><td>${nm(c.x)}</td><td>${esc(c.x.brand||"")}</td><td>${c.r?d2(c.r):"—"}</td><td>${c.cust?d2(c.cust):"—"}</td><td class="${sst(c)[0]}">${sst(c)[1]}</td></tr>`).join("")}</table></div></div>`:`<div class="box"><h2 style="margin-top:0">Summary</h2>
 <div class="kp"><div><b>${items.length}</b><span>products shopped</span></div><div><b>${withP.length?d2(avg):"—"}</b><span>average store price</span></div><div><b>${withM.length}</b><span>have a factory quote</span></div><div><b class="g">${hit.length}</b><span>reach the ${tgt}% margin target</span></div><div><b class="y">${thin.length}</b><span>make money, under target</span></div><div><b class="r">${lose.length}</b><span>lose money at this store price</span></div></div>
-<p class="sm">How the numbers work: the customer (the store) pays ${cpPct}% of the shelf price. Margin is what is left of that after the factory price is landed here (freight, duty and tariff from the Source Book settings). ${calcd.length<items.length?`${items.length-calcd.length} product${items.length-calcd.length===1?" has":"s have"} no margin figure because the price tag was not read or no factory has quoted it.`:""}</p>
+<p class="sm">How the numbers work: the customer${custName?` (${esc(custName)})`:""} pays ${cpPct}% of the shelf price. Margin is what is left of that after the factory price is landed here (freight, duty and tariff from the Source Book settings). ${calcd.length<items.length?`${items.length-calcd.length} product${items.length-calcd.length===1?" has":"s have"} no margin figure because the price tag was not read or no factory has quoted it.`:""}</p>
 ${best.length?`<h2>Best opportunities</h2><ul>${best.map(li).join("")}</ul>`:""}
 ${worst.length?`<h2>Biggest gaps (we cannot meet this store price today)</h2><ul>${worst.map(li).join("")}</ul>`:""}
 ${noq.length?`<h2>Not quoted by any factory yet (${noq.length})</h2><p class="sm">${noq.map(c=>nm(c.x)+(c.r?` (${d2(c.r)})`:"")).join(" · ")}</p>`:""}
@@ -2373,6 +2385,7 @@ function openQuoteForm(supplierId, existing){
       <div class="field"><label class="label" for="q-valid">Valid until</label><input type="date" id="q-valid" value="${esc(q.validUntil||"")}"></div>
       <div class="field"><label class="label" for="q-cur">Currency</label><select id="q-cur">${["USD","RMB","EUR"].map(c=>`<option ${q.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
       <div class="field"><label class="label" for="q-inc">Terms</label><select id="q-inc">${["FOB","EXW","CIF","CFR","DDP","FCA"].map(c=>`<option ${q.incoterm===c?"selected":""}>${c}</option>`).join("")}</select></div>
+      <div class="field"><label class="label" for="q-nopack">Packaging</label><label style="display:flex;gap:8px;align-items:center;min-height:38px"><input type="checkbox" id="q-nopack" style="width:auto" ${q.noPack?"checked":""}> Prices are without packaging</label></div>
       <div class="field"><label class="label" for="q-port">Port</label><input id="q-port" value="${esc(q.port||"")}" placeholder="Shenzhen, Ningbo…"></div>
       <div class="field"><label class="label" for="q-lead">Lead time</label><input id="q-lead" value="${esc(q.leadTime||"")}" placeholder="e.g. 35 days"></div>
     </div>
@@ -2389,8 +2402,8 @@ function openQuoteForm(supplierId, existing){
     const box=body.querySelector("#lines");
     const LK=["item","sku","price","moq","unit","unitsPerCtr","target"];
     const sync=()=>{ box.querySelectorAll(".line").forEach((el,i)=>{ LK.forEach(k=>lines[i][k]=el.querySelector(`[data-k="${k}"]`).value.trim()); }); };
-    const draftQ=()=>{ const L={}; LC_FIELDS.forEach(([k])=>L[k]=body.querySelector("#lc-"+k).value.trim()); return {currency:body.querySelector("#q-cur").value, incoterm:body.querySelector("#q-inc").value, landed:L}; };
-    const preview=()=>{ sync(); const dq=draftQ(); box.querySelectorAll(".line").forEach((el,i)=>{ const r=landed(dq,lines[i]); const ty=typeOf(lines[i]); const f=fitFor(dq,lines[i],ty&&!ty.a?ty.t:null); el.querySelector("[data-lc]").innerHTML = r ? `FOB ${usd(r.fob)} + freight ${usd(r.freight)} + duty ${usd(r.duty)} (${r.pct}%) + other ${usd(r.other)} = <strong>${usd(r.total)}</strong>${ty?` · ${esc(ty.a?"Add-on":ty.t)}`:""}${f&&!(ty&&ty.a)?" "+fitBadge(f):""}${f?.retail!=null?` <span class="note">max landed ${usd(f.maxL)} at ${usd(f.retail)} retail</span>`:""}` : `<span class="note">Enter a price to see landed cost</span>`; }); };
+    const draftQ=()=>{ const L={}; LC_FIELDS.forEach(([k])=>L[k]=body.querySelector("#lc-"+k).value.trim()); return {currency:body.querySelector("#q-cur").value, incoterm:body.querySelector("#q-inc").value, noPack:!!body.querySelector("#q-nopack")?.checked, landed:L}; };
+    const preview=()=>{ sync(); const dq=draftQ(); box.querySelectorAll(".line").forEach((el,i)=>{ const r=landed(dq,lines[i]); const ty=typeOf(lines[i]); const f=fitFor(dq,lines[i],ty&&!ty.a?ty.t:null); el.querySelector("[data-lc]").innerHTML = r ? `Price ${usd(r.fob)}${r.exw?` + to port ${usd(r.exw)}`:""}${r.pack?` + packaging ${usd(r.pack)}`:""} + freight ${usd(r.freight)} + duty ${usd(r.duty)} (${r.pct}%) + other ${usd(r.other)} = <strong>${usd(r.total)}</strong>${ty?` · ${esc(ty.a?"Add-on":ty.t)}`:""}${f&&!(ty&&ty.a)?" "+fitBadge(f):""}${f?.retail!=null?` <span class="note">max landed ${usd(f.maxL)} at ${usd(f.retail)} retail</span>`:""}` : `<span class="note">Enter a price to see landed cost</span>`; }); };
     const draw=()=>{ box.innerHTML=lines.map((l,i)=>`<div class="line">
       ${l._pv||l.img?`<img class="pimg" src="${esc(l._pv||l.img)}" alt="" style="width:48px;height:48px">`:""}<div class="f-item"><label for="l${i}item">Item</label><input id="l${i}item" data-k="item" value="${esc(l.item)}" placeholder="Item description"></div>
       <div><label for="l${i}sku">Model / SKU</label><input id="l${i}sku" data-k="sku" value="${esc(l.sku||"")}"></div>
@@ -2453,7 +2466,7 @@ Reply with only a JSON object: {"currency":"USD|RMB|EUR","incoterm":"FOB|EXW|CIF
       const v=id=>body.querySelector(id).value.trim();
       const target=supFromLabel(v("#q-sup"));
       if(!target){ btn.disabled=false; ss.textContent="Pick a factory from the list."; ss.className="status err"; return; }
-      const doc={...stripMeta(q), supplierId:target, date:v("#q-date"), validUntil:v("#q-valid"), currency:v("#q-cur"), incoterm:v("#q-inc"), port:v("#q-port"), leadTime:v("#q-lead"), notes:v("#q-notes"), lines:keep, landed:draftQ().landed, updatedAt:Date.now()};
+      const doc={...stripMeta(q), supplierId:target, date:v("#q-date"), validUntil:v("#q-valid"), currency:v("#q-cur"), incoterm:v("#q-inc"), port:v("#q-port"), leadTime:v("#q-lead"), notes:v("#q-notes"), lines:keep, landed:draftQ().landed, noPack:draftQ().noPack, updatedAt:Date.now()};
       try{
         if(file&&assets){
           if(sheet){ ss.textContent=sheet.picCount?`Saving ${sheet.picCount} picture${sheet.picCount>1?"s":""}…`:"Saving…";
@@ -3137,7 +3150,7 @@ function askContext(question){
   const samples=arr(S.samples).map(x=>({x,score:sc([x.item,x.tracking,x.notes,S.sup.get(x.supplierId)?.company].join(" "))})).filter(r=>r.score>0||/sample/i.test(question)).sort((a,b)=>b.score-a.score).slice(0,25)
     .map(r=>`- ${S.sup.get(r.x.supplierId)?.company||"?"} | ${String(r.x.item||"").slice(0,120)} | ${r.x.status||""} | ${r.x.date||r.x.requestedAt||""} | ${String(r.x.tracking||"")} ${String(r.x.notes||"").slice(0,120)}`);
   return {n:pick.length, text:`BOOK TOTALS: ${S.sup.size} factories, ${S.quotes.length} quotes, ${rows.length} quoted items. Today is ${today()}.
-Settings: customer pays ${num(S.settings.customerPct)||55}% of retail; margin target ${num(S.settings.marginPct)||40}%.
+Settings: customers and the share of retail each pays: ${customers().map(c=>`${c.name} ${100-c.margin}%`).join("; ")||((num(S.settings.customerPct)||55)+"%")}. EXW quotes get ${num(S.settings.exwPct)??0}% added to reach the port; prices without packaging get $${num(S.settings.packPerUnit)??0} packaging added. Margin target ${num(S.settings.marginPct)||40}%.
 Product types with number of quoted items: ${[...types.entries()].sort((a,b)=>b[1]-a[1]).slice(0,70).map(([t,n])=>`${t} ${n}`).join(", ")}
 
 QUOTED ITEMS (${pick.length} of ${rows.length}, the ones closest to the question; columns: factory | item | model | price | terms | MOQ | landed cost est. | quote date | product type | note):
